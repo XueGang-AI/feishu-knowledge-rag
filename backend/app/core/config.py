@@ -12,7 +12,12 @@ class Settings(BaseSettings):
     app_port: int = Field(default=8080, alias="APP_PORT")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     cors_allow_origins: list[str] = Field(
-        default=["http://127.0.0.1:3001", "http://localhost:3001"],
+        default=[
+            "http://127.0.0.1:3001",
+            "http://localhost:3001",
+            "http://127.0.0.1:3003",
+            "http://localhost:3003",
+        ],
         alias="CORS_ALLOW_ORIGINS",
     )
 

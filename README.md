@@ -139,6 +139,13 @@ pnpm dev
 http://127.0.0.1:3001
 ```
 
+如果 `3001` 已被占用，可临时使用：
+
+```bash
+cd frontend
+pnpm exec next dev -H 127.0.0.1 -p 3003
+```
+
 如果后端临时跑在 `8081`，在 `frontend/.env` 中设置：
 
 ```env
