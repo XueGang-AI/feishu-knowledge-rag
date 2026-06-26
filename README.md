@@ -75,10 +75,13 @@ embedding
 |-----|------|
 | `POST /api/sync/jobs` | 创建同步任务 |
 | `GET /api/sync/jobs/{job_id}` | 查看同步任务详情 |
+| `POST /api/sync/jobs/{job_id}/run` | 启动已创建的同步任务 |
+| `POST /api/sync/jobs/{job_id}/cancel` | 取消待运行或运行中的同步任务 |
 | `GET /api/sync/status` | 查看整体同步状态 |
 | `POST /api/reindex` | 按空间、节点或文档重新索引 |
 | `POST /api/search` | 返回召回和重排后的 chunk |
 | `POST /api/chat` | 返回答案和来源引用 |
+| `GET /api/sources/{chunk_id}` | 查看来源 chunk 详情 |
 
 ## 后端开发启动
 
@@ -94,6 +97,23 @@ cp .env.example .env
 APP_PORT=8081 ./scripts/dev-backend.sh
 ```
 
+## 本地模型服务
+
+```bash
+# 下载 reranker 和 Qwen GGUF
+./scripts/download-models.sh
+
+# 启动 bge-m3 embedding，复用本机已有工程
+./scripts/start-bge-m3.sh
+
+# 启动 bge-reranker-v2-m3
+./scripts/start-reranker.sh
+
+# 安装 llama.cpp 后启动 Qwen3.6-27B Q4_K_M
+./scripts/install-llamacpp-macos.sh
+./scripts/start-qwen-llamacpp.sh
+```
+
 基础校验：
 
 ```bash
@@ -102,7 +122,28 @@ uv run ruff check .
 curl http://127.0.0.1:8080/health
 ```
 
-当前已实现后端基础骨架、SQLite 状态库初始化、`/health`、`POST /api/sync/jobs`、`GET /api/sync/jobs`、`GET /api/sync/jobs/{job_id}` 和 `GET /api/sync/status`。飞书真实同步、切块、Milvus upsert、rerank 和 chat 会按 `docs/development-plan.md` 后续阶段接入。
+当前已实现后端基础骨架、SQLite 状态库初始化、飞书同步任务框架、文档解析切块、Milvus 索引客户端、检索、重排、问答和来源查看 API。
+
+## 前端开发启动
+
+```bash
+cd frontend
+cp .env.example .env
+pnpm install
+pnpm dev
+```
+
+默认前端地址：
+
+```text
+http://127.0.0.1:3001
+```
+
+如果后端临时跑在 `8081`，在 `frontend/.env` 中设置：
+
+```env
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8081
+```
 
 ## 文档
 

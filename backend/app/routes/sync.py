@@ -2,16 +2,23 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.app.core.config import get_settings
 from backend.app.db.sqlite import connect, initialize_database
+from backend.app.services.sync_service import run_sync_job
 
 router = APIRouter(prefix="/sync", tags=["sync"])
 
 
 class CreateSyncJobRequest(BaseModel):
+    scope_type: str = Field(default="all", pattern="^(all|space|node|document)$")
+    scope_id: str | None = None
+    auto_start: bool = False
+
+
+class ReindexRequest(BaseModel):
     scope_type: str = Field(default="all", pattern="^(all|space|node|document)$")
     scope_id: str | None = None
 
@@ -47,7 +54,10 @@ def _row_to_job(row: Any) -> SyncJobResponse:
 
 
 @router.post("/jobs", response_model=SyncJobResponse)
-def create_sync_job(request: CreateSyncJobRequest) -> SyncJobResponse:
+def create_sync_job(
+    request: CreateSyncJobRequest,
+    background_tasks: BackgroundTasks,
+) -> SyncJobResponse:
     settings = get_settings()
     initialize_database(settings.sqlite_path)
 
@@ -71,7 +81,10 @@ def create_sync_job(request: CreateSyncJobRequest) -> SyncJobResponse:
             (job_id,),
         ).fetchone()
 
-    return _row_to_job(row)
+    response = _row_to_job(row)
+    if request.auto_start:
+        background_tasks.add_task(run_sync_job, job_id)
+    return response
 
 
 @router.get("/jobs", response_model=list[SyncJobResponse])
@@ -97,6 +110,62 @@ def get_sync_job(job_id: str) -> SyncJobResponse:
     if row is None:
         raise HTTPException(status_code=404, detail="sync job not found")
     return _row_to_job(row)
+
+
+@router.post("/jobs/{job_id}/run", response_model=SyncJobResponse)
+def run_existing_sync_job(job_id: str, background_tasks: BackgroundTasks) -> SyncJobResponse:
+    settings = get_settings()
+    initialize_database(settings.sqlite_path)
+    with connect(settings.sqlite_path) as connection:
+        row = connection.execute(
+            "SELECT * FROM sync_jobs WHERE job_id = ?",
+            (job_id,),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="sync job not found")
+    if row["status"] == "running":
+        raise HTTPException(status_code=409, detail="sync job is already running")
+    background_tasks.add_task(run_sync_job, job_id)
+    return _row_to_job(row)
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=SyncJobResponse)
+def cancel_sync_job(job_id: str) -> SyncJobResponse:
+    settings = get_settings()
+    initialize_database(settings.sqlite_path)
+    now = datetime.now(UTC).isoformat()
+    with connect(settings.sqlite_path) as connection:
+        row = connection.execute(
+            "SELECT * FROM sync_jobs WHERE job_id = ?",
+            (job_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="sync job not found")
+        if row["status"] not in {"pending", "running"}:
+            raise HTTPException(
+                status_code=409, detail="only pending or running jobs can be cancelled"
+            )
+        connection.execute(
+            "UPDATE sync_jobs SET status = 'cancelled', finished_at = ? WHERE job_id = ?",
+            (now, job_id),
+        )
+        updated = connection.execute(
+            "SELECT * FROM sync_jobs WHERE job_id = ?",
+            (job_id,),
+        ).fetchone()
+    return _row_to_job(updated)
+
+
+@router.post("/reindex", response_model=SyncJobResponse)
+def reindex(request: ReindexRequest, background_tasks: BackgroundTasks) -> SyncJobResponse:
+    return create_sync_job(
+        CreateSyncJobRequest(
+            scope_type=request.scope_type,
+            scope_id=request.scope_id,
+            auto_start=True,
+        ),
+        background_tasks,
+    )
 
 
 @router.get("/status")
