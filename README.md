@@ -80,6 +80,30 @@ embedding
 | `POST /api/search` | 返回召回和重排后的 chunk |
 | `POST /api/chat` | 返回答案和来源引用 |
 
+## 后端开发启动
+
+```bash
+uv sync --extra dev
+cp .env.example .env
+./scripts/dev-backend.sh
+```
+
+如果 `8080` 已被占用，可临时使用：
+
+```bash
+APP_PORT=8081 ./scripts/dev-backend.sh
+```
+
+基础校验：
+
+```bash
+uv run pytest -q
+uv run ruff check .
+curl http://127.0.0.1:8080/health
+```
+
+当前已实现后端基础骨架、SQLite 状态库初始化、`/health`、`POST /api/sync/jobs`、`GET /api/sync/jobs`、`GET /api/sync/jobs/{job_id}` 和 `GET /api/sync/status`。飞书真实同步、切块、Milvus upsert、rerank 和 chat 会按 `docs/development-plan.md` 后续阶段接入。
+
 ## 文档
 
 - [docs/local-model-audit.md](docs/local-model-audit.md)：本机模型、服务和部署方式判断。

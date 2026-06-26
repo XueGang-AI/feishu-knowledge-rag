@@ -1,0 +1,29 @@
+.DS_Store
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Local runtime state
+data/state/
+data/logs/
+data/cache/
+data/run/
+
+# Model artifacts
+models/
+*.gguf
+*.safetensors
+*.bin
+
+# Frontend
+node_modules/
+.next/
+dist/
+coverage/
+
+# Milvus local volumes
+deploy/milvus/volumes/

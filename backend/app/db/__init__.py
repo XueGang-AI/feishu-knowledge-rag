@@ -1,0 +1,1 @@
+"""SQLite state storage."""
