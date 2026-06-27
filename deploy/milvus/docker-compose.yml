@@ -23,8 +23,8 @@ services:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
     ports:
-      - "127.0.0.1:9000:9000"
-      - "127.0.0.1:9001:9001"
+      - "127.0.0.1:${MILVUS_ISOLATED_MINIO_API_PORT:-19100}:9000"
+      - "127.0.0.1:${MILVUS_ISOLATED_MINIO_CONSOLE_PORT:-19101}:9001"
     volumes:
       - ./volumes/minio:/minio_data
     command: minio server /minio_data --console-address ":9001"
@@ -45,6 +45,8 @@ services:
       MINIO_REGION: us-east-1
       ETCD_ENDPOINTS: etcd:2379
       MINIO_ADDRESS: minio:9000
+      MILVUS_DATABASE: ${MILVUS_DATABASE:-feishu_knowledge_rag}
+      COLLECTION_PREFIX: ${COLLECTION_PREFIX:-feishu_knowledge_rag}
     volumes:
       - ./volumes/milvus:/var/lib/milvus
     healthcheck:
@@ -54,8 +56,8 @@ services:
       timeout: 20s
       retries: 3
     ports:
-      - "127.0.0.1:19530:19530"
-      - "127.0.0.1:9091:9091"
+      - "127.0.0.1:${MILVUS_ISOLATED_GRPC_PORT:-19310}:19530"
+      - "127.0.0.1:${MILVUS_ISOLATED_WEBUI_PORT:-19191}:9091"
     depends_on:
       - etcd
       - minio
@@ -66,10 +68,10 @@ services:
     restart: unless-stopped
     environment:
       MILVUS_URL: "standalone:19530"
-      DATABASE: "default"
+      DATABASE: "${MILVUS_DATABASE:-feishu_knowledge_rag}"
       ATTU_LOG_LEVEL: "info"
     ports:
-      - "127.0.0.1:8000:3000"
+      - "127.0.0.1:${MILVUS_ISOLATED_ATTU_PORT:-11888}:3000"
     depends_on:
       - standalone
 

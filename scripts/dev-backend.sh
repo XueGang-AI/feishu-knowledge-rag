@@ -2,7 +2,7 @@
 set -euo pipefail
 
 HOST="${APP_HOST:-127.0.0.1}"
-PORT="${APP_PORT:-8080}"
+PORT="${APP_PORT:-3301}"
 
 if [ -x ".venv/bin/python" ]; then
   PYTHON=".venv/bin/python"

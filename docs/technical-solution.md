@@ -352,13 +352,12 @@ content:
 ## 部署拓扑
 
 ```text
-127.0.0.1:3001  frontend
-127.0.0.1:8080  backend
-127.0.0.1:8002  bge-m3 embedding
-127.0.0.1:8003  bge-reranker-v2-m3
-127.0.0.1:8004  llama.cpp Qwen
-127.0.0.1:19530 Milvus
-127.0.0.1:8000  Attu
+127.0.0.1:3300  frontend
+127.0.0.1:3301  backend
+127.0.0.1:8010  通用 Embedding
+127.0.0.1:8020  通用 Reranker
+127.0.0.1:8030  通用 LLM OpenAI API
+127.0.0.1:19530 通用 Milvus
 ```
 
 ## 配置示例
@@ -369,7 +368,7 @@ FEISHU_APP_SECRET=
 
 SQLITE_PATH=data/state/feishu_rag.sqlite3
 
-EMBEDDING_BASE_URL=http://127.0.0.1:8002
+EMBEDDING_BASE_URL=http://127.0.0.1:8010
 EMBEDDING_MODEL=BAAI/bge-m3
 EMBEDDING_DIM=1024
 
@@ -377,10 +376,10 @@ MILVUS_URI=http://127.0.0.1:19530
 MILVUS_DB=default
 MILVUS_COLLECTION=feishu_chunks_v1
 
-RERANKER_BASE_URL=http://127.0.0.1:8003
+RERANKER_BASE_URL=http://127.0.0.1:8020
 RERANKER_MODEL=BAAI/bge-reranker-v2-m3
 
-LLM_BASE_URL=http://127.0.0.1:8004/v1
+LLM_BASE_URL=http://127.0.0.1:8030/v1
 LLM_MODEL=Qwen3.6-27B-GGUF:Q4_K_M
 LLM_TEMPERATURE=0.2
 LLM_MAX_TOKENS=2048
@@ -394,7 +393,7 @@ LLM_MAX_TOKENS=2048
 | 飞书 API 限流 | 全局 limiter + 指数退避 |
 | 文档 block 类型复杂 | 先覆盖标题、正文、列表、表格、代码块，图片/附件后续扩展 |
 | Milvus 容器路径不一致 | 将 compose 固化到本项目或修正现有脚本 |
-| 8000 端口冲突 | bge-m3 改为 8002，Attu 保持 8000 |
+| 通用模型服务不可用 | 健康检查标记为 unavailable，前后端不自动拉起外部模型服务 |
 | Qwen 上下文过长 | rerank 后 top 5-8，按 token budget 截断 |
 | 引用不准确 | 所有 prompt context 强制带 `source_id`、`chunk_id`、`block_ids` |
 | 重复 chunk | `content_hash` + `chunk_id` 稳定生成，upsert 幂等 |

@@ -24,8 +24,8 @@
 
 | 项目 | 本机状态 | 处理方式 |
 |------|----------|----------|
-| bge-m3 | 已存在 `/Users/xuegang/Desktop/My Project/bge-m3-local` 和 Hugging Face 缓存 | 作为 embedding 服务复用，建议改用 `8002` 端口启动 |
-| Milvus | 已有 Docker 镜像和容器，但 standalone/etcd/minio 当前未运行 | 修复或迁移 compose 后启动，保留 `19530` |
+| bge-m3 | 已存在 `/Users/xuegang/Desktop/My Project/bge-m3-local` 和 Hugging Face 缓存 | 作为通用 embedding 服务复用，默认访问 `8010` |
+| Milvus | 由通用 Milvus 服务提供，地址 `127.0.0.1:19530` | 本项目默认只连接，不自动启动 |
 | bge-reranker-v2-m3 | 未发现本地缓存 | 下载 `BAAI/bge-reranker-v2-m3`，部署为 rerank 服务 |
 | Qwen3.6-27B-GGUF | 未发现 GGUF 文件 | 下载 `Qwen3.6-27B-Q4_K_M.gguf` |
 | llama.cpp | 未发现 `llama-server`/`llama-cli` | 安装或编译 llama.cpp，用 OpenAI-compatible API 部署 Qwen |
@@ -39,13 +39,12 @@
 
 | 服务 | 地址 |
 |------|------|
-| Backend FastAPI | `http://127.0.0.1:8080` |
-| Frontend Next.js | `http://127.0.0.1:3001` |
-| bge-m3 embedding | `http://127.0.0.1:8002` |
-| bge-reranker-v2-m3 | `http://127.0.0.1:8003` |
-| llama.cpp / Qwen | `http://127.0.0.1:8004/v1` |
+| Backend FastAPI | `http://127.0.0.1:3301` |
+| Frontend Next.js | `http://127.0.0.1:3300` |
+| 通用 Embedding | `http://127.0.0.1:8010` |
+| 通用 Reranker | `http://127.0.0.1:8020` |
+| 通用 LLM | `http://127.0.0.1:8030/v1` |
 | Milvus | `127.0.0.1:19530` |
-| Attu | `http://127.0.0.1:8000` |
 
 ## 来源追溯字段
 
@@ -91,13 +90,9 @@ cp .env.example .env
 ./scripts/dev-backend.sh
 ```
 
-如果 `8080` 已被占用，可临时使用：
-
-```bash
-APP_PORT=8081 ./scripts/dev-backend.sh
-```
-
 ## 本地模型服务
+
+本项目的前端和后端启动脚本不会自动启动 Milvus、BGE、Reranker 或 Qwen。下面脚本只作为手动维护通用服务时使用。
 
 ```bash
 # 下载 reranker 和 Qwen GGUF
@@ -119,7 +114,7 @@ APP_PORT=8081 ./scripts/dev-backend.sh
 ```bash
 uv run pytest -q
 uv run ruff check .
-curl http://127.0.0.1:8080/health
+curl http://127.0.0.1:3301/health
 ```
 
 当前已实现后端基础骨架、SQLite 状态库初始化、飞书同步任务框架、文档解析切块、Milvus 索引客户端、检索、重排、问答和来源查看 API。
@@ -136,21 +131,14 @@ pnpm dev
 默认前端地址：
 
 ```text
-http://127.0.0.1:3001
+http://127.0.0.1:3300
 ```
-
-如果 `3001` 已被占用，可临时使用：
-
-```bash
-cd frontend
-pnpm exec next dev -H 127.0.0.1 -p 3003
-```
-
-如果后端临时跑在 `8081`，在 `frontend/.env` 中设置：
 
 ```env
-NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8081
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3301
 ```
+
+`deploy/milvus/docker-compose.yml` 只作为可选隔离环境，默认宿主机端口为 `19310/19191/19100/19101/11888`，不会占用通用 Milvus 端口 `19530`。
 
 ## 文档
 

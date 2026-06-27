@@ -10,11 +10,11 @@
 - 建立目录结构：`backend/`、`frontend/`、`deploy/`、`docs/`、`data/`。
 - 新增 `.env.example`，只放变量名和示例，不放密钥。
 - 修复 Milvus 部署路径，或把 compose 复制到 `deploy/milvus/docker-compose.yml`。
-- 启动 Milvus，验证 `127.0.0.1:19530` 和 `127.0.0.1:9091/healthz`。
-- 启动 bge-m3 到 `8002`，验证 `/v1/embeddings`。
+- 连接通用 Milvus，验证 `127.0.0.1:19530`。
+- 连接通用 Embedding 服务 `8010`，验证 `/v1/embeddings`。
 - 下载 bge-reranker-v2-m3。
 - 下载 `Qwen3.6-27B-Q4_K_M.gguf`。
-- 安装或编译 llama.cpp，验证 `8004/v1/chat/completions`。
+- 连接通用 LLM 服务 `8030/v1`，验证 `/chat/completions`。
 
 验收标准：
 
@@ -192,7 +192,7 @@
 
 验收标准：
 
-- 打开 `http://127.0.0.1:3001` 即进入可用聊天界面。
+- 打开 `http://127.0.0.1:3300` 即进入可用聊天界面。
 - 每条回答可展开来源。
 - 同步任务状态实时刷新。
 

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 BGE_M3_PROJECT_DIR="${BGE_M3_PROJECT_DIR:-/Users/xuegang/Desktop/My Project/bge-m3-local}"
-BGE_PORT="${BGE_PORT:-8002}"
+BGE_PORT="${BGE_PORT:-8010}"
 BGE_DEVICE="${BGE_DEVICE:-mps}"
 
 if [ ! -x "$BGE_M3_PROJECT_DIR/scripts/start.sh" ]; then

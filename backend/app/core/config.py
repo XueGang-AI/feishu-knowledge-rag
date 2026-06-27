@@ -9,14 +9,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_env: str = Field(default="local", alias="APP_ENV")
     app_host: str = Field(default="127.0.0.1", alias="APP_HOST")
-    app_port: int = Field(default=8080, alias="APP_PORT")
+    app_port: int = Field(default=3301, alias="APP_PORT")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     cors_allow_origins: list[str] = Field(
         default=[
-            "http://127.0.0.1:3001",
-            "http://localhost:3001",
-            "http://127.0.0.1:3003",
-            "http://localhost:3003",
+            "http://127.0.0.1:3300",
+            "http://localhost:3300",
         ],
         alias="CORS_ALLOW_ORIGINS",
     )
@@ -34,7 +32,7 @@ class Settings(BaseSettings):
     )
     feishu_page_size: int = Field(default=50, alias="FEISHU_PAGE_SIZE")
 
-    embedding_base_url: str = Field(default="http://127.0.0.1:8002", alias="EMBEDDING_BASE_URL")
+    embedding_base_url: str = Field(default="http://127.0.0.1:8010", alias="EMBEDDING_BASE_URL")
     embedding_model: str = Field(default="BAAI/bge-m3", alias="EMBEDDING_MODEL")
     embedding_dim: int = Field(default=1024, alias="EMBEDDING_DIM")
     embedding_timeout_seconds: float = Field(default=60, alias="EMBEDDING_TIMEOUT_SECONDS")
@@ -44,11 +42,11 @@ class Settings(BaseSettings):
     milvus_collection: str = Field(default="feishu_chunks_v1", alias="MILVUS_COLLECTION")
     milvus_timeout_seconds: float = Field(default=5, alias="MILVUS_TIMEOUT_SECONDS")
 
-    reranker_base_url: str = Field(default="http://127.0.0.1:8003", alias="RERANKER_BASE_URL")
+    reranker_base_url: str = Field(default="http://127.0.0.1:8020", alias="RERANKER_BASE_URL")
     reranker_model: str = Field(default="BAAI/bge-reranker-v2-m3", alias="RERANKER_MODEL")
     reranker_timeout_seconds: float = Field(default=60, alias="RERANKER_TIMEOUT_SECONDS")
 
-    llm_base_url: str = Field(default="http://127.0.0.1:8004/v1", alias="LLM_BASE_URL")
+    llm_base_url: str = Field(default="http://127.0.0.1:8030/v1", alias="LLM_BASE_URL")
     llm_model: str = Field(default="Qwen3.6-27B-GGUF:Q4_K_M", alias="LLM_MODEL")
     llm_timeout_seconds: float = Field(default=120, alias="LLM_TIMEOUT_SECONDS")
     llm_temperature: float = Field(default=0.2, alias="LLM_TEMPERATURE")

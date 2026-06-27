@@ -12,6 +12,6 @@ def test_default_model_settings() -> None:
 
 
 def test_service_urls_are_normalized() -> None:
-    settings = Settings(EMBEDDING_BASE_URL="http://127.0.0.1:8002/")
+    settings = Settings(EMBEDDING_BASE_URL="http://127.0.0.1:8010/")
 
-    assert settings.embedding_base_url == "http://127.0.0.1:8002"
+    assert settings.embedding_base_url == "http://127.0.0.1:8010"

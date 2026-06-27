@@ -46,7 +46,7 @@ type SyncJob = {
   created_at: string;
 };
 
-const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8080";
+const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:3301";
 
 export default function Home() {
   const [apiBase, setApiBase] = useState(DEFAULT_API_BASE);

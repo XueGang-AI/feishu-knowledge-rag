@@ -12,8 +12,11 @@
 ## 本机已确认环境
 
 - bge-m3：已存在本地项目 `/Users/xuegang/Desktop/My Project/bge-m3-local`，已缓存 `BAAI/bge-m3` 权重，输出 dense 维度 1024。
-- bge-m3 当前未运行，默认 8000 端口与 Attu 冲突。后续建议以 `BGE_PORT=8002 ./scripts/start.sh mps` 启动。
-- Milvus：已有 Docker 镜像与容器，版本 `milvusdb/milvus:v2.6.18`；但 `milvus-standalone`、`milvus-etcd`、`milvus-minio` 当前未运行，只有 Attu 占用 `127.0.0.1:8000`。
+- 本项目不默认启动 BGE、Reranker、Qwen 或 Milvus；默认只连接通用服务地址。
+- 通用 Embedding 地址：`http://127.0.0.1:8010`。
+- 通用 Reranker 地址：`http://127.0.0.1:8020`。
+- 通用 LLM 地址：`http://127.0.0.1:8030/v1`。
+- 通用 Milvus 地址：`http://127.0.0.1:19530`。
 - bge-reranker-v2-m3：本机未发现缓存，需要下载并部署。
 - Qwen3.6-27B-GGUF：本机未发现 GGUF 文件，需要下载 `Qwen3.6-27B-Q4_K_M.gguf` 并用 llama.cpp 部署。
 - llama.cpp：未发现 `llama-server` 或 `llama-cli`，需要安装或编译。
@@ -26,8 +29,8 @@
 - Embedding：调用本地 bge-m3 服务，优先 MPS。
 - 向量库：本地 Milvus standalone，collection 维度 1024。
 - Rerank：`BAAI/bge-reranker-v2-m3`，建议独立 FastAPI 服务或后端内嵌模块，先独立服务便于资源隔离。
-- 生成：`llama.cpp` 的 OpenAI-compatible API，加载 `Qwen3.6-27B-Q4_K_M.gguf`。
-- 前端：Next.js / React，端口建议 `3001`，避免已有 `3000/3002` 占用。
+- 生成：通过通用 OpenAI-compatible LLM 服务访问 Qwen，默认 `http://127.0.0.1:8030/v1`。
+- 前端：Next.js / React，端口 `3300`。
 
 ## 开发原则
 
@@ -41,14 +44,12 @@
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
-| Backend FastAPI | 8080 | 本项目 API |
-| Frontend Next.js | 3001 | 本项目 UI |
-| bge-m3 embedding | 8002 | 避开 Attu 的 8000 |
-| bge-reranker-v2-m3 | 8003 | 独立 rerank 服务 |
-| llama.cpp OpenAI API | 8004 | Qwen3.6 生成服务 |
-| Milvus | 19530 | gRPC/REST |
-| Milvus WebUI | 9091 | health/webui |
-| Attu | 8000 | 当前已占用 |
+| Backend FastAPI | 3301 | 本项目 API |
+| Frontend Next.js | 3300 | 本项目 UI |
+| 通用 Embedding | 8010 | 本项目只连接，不默认启动 |
+| 通用 Reranker | 8020 | 本项目只连接，不默认启动 |
+| 通用 LLM OpenAI API | 8030 | 本项目只连接，不默认启动 |
+| 通用 Milvus | 19530 | 本项目只连接，不默认启动 |
 
 ## 文档入口
 

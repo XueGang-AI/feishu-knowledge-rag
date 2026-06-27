@@ -3,7 +3,7 @@ set -euo pipefail
 
 MODEL_PATH="${QWEN_GGUF_PATH:-/Users/xuegang/models/qwen3.6-27b-gguf/Qwen3.6-27B-Q4_K_M.gguf}"
 HOST="${LLM_HOST:-127.0.0.1}"
-PORT="${LLM_PORT:-8004}"
+PORT="${LLM_PORT:-8030}"
 CTX_SIZE="${LLM_CTX_SIZE:-32768}"
 PARALLEL="${LLM_PARALLEL:-1}"
 LLAMA_SERVER_BIN="${LLAMA_SERVER_BIN:-llama-server}"
