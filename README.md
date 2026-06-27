@@ -20,16 +20,14 @@
   -> 返回答案和来源引用
 ```
 
-## 本机判断结论
+## 通用服务依赖
 
-| 项目 | 本机状态 | 处理方式 |
-|------|----------|----------|
-| bge-m3 | 已存在 `/Users/xuegang/Desktop/My Project/bge-m3-local` 和 Hugging Face 缓存 | 作为通用 embedding 服务复用，默认访问 `8010` |
-| Milvus | 由通用 Milvus 服务提供，地址 `127.0.0.1:19530` | 本项目默认只连接，不自动启动 |
-| bge-reranker-v2-m3 | 未发现本地缓存 | 下载 `BAAI/bge-reranker-v2-m3`，部署为 rerank 服务 |
-| Qwen3.6-27B-GGUF | 未发现 GGUF 文件 | 下载 `Qwen3.6-27B-Q4_K_M.gguf` |
-| llama.cpp | 未发现 `llama-server`/`llama-cli` | 安装或编译 llama.cpp，用 OpenAI-compatible API 部署 Qwen |
-| Ollama / LM Studio | 未发现本地目录 | 不作为首选部署方式 |
+| 能力 | 地址 | 说明 |
+|------|------|------|
+| Embedding | `http://127.0.0.1:8010` | 兼容 bge-m3 embedding 接口 |
+| Reranker | `http://127.0.0.1:8020` | 兼容 query-document rerank 接口 |
+| LLM | `http://127.0.0.1:8030/v1` | OpenAI-compatible API |
+| Milvus | `http://127.0.0.1:19530` | 通用 Milvus 服务 |
 
 关键判断：`Qwen3.6-27B-GGUF` 是 Hugging Face 仓库名，`Q4_K_M` 是具体量化档位，本项目配置应写为“仓库 `lmstudio-community/Qwen3.6-27B-GGUF`，文件 `Qwen3.6-27B-Q4_K_M.gguf`”。
 
@@ -90,25 +88,6 @@ cp .env.example .env
 ./scripts/dev-backend.sh
 ```
 
-## 本地模型服务
-
-本项目的前端和后端启动脚本不会自动启动 Milvus、BGE、Reranker 或 Qwen。下面脚本只作为手动维护通用服务时使用。
-
-```bash
-# 下载 reranker 和 Qwen GGUF
-./scripts/download-models.sh
-
-# 启动 bge-m3 embedding，复用本机已有工程
-./scripts/start-bge-m3.sh
-
-# 启动 bge-reranker-v2-m3
-./scripts/start-reranker.sh
-
-# 安装 llama.cpp 后启动 Qwen3.6-27B Q4_K_M
-./scripts/install-llamacpp-macos.sh
-./scripts/start-qwen-llamacpp.sh
-```
-
 基础校验：
 
 ```bash
@@ -138,7 +117,7 @@ http://127.0.0.1:3300
 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3301
 ```
 
-`deploy/milvus/docker-compose.yml` 只作为可选隔离环境，默认宿主机端口为 `19310/19191/19100/19101/11888`，不会占用通用 Milvus 端口 `19530`。
+`deploy/milvus/docker-compose.yml` 只作为可选隔离环境，不参与本项目默认启动流程。
 
 ## 文档
 

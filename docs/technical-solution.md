@@ -340,7 +340,7 @@ content:
 | Sources | 展开查看引用 chunk、标题路径、block_id、飞书链接 |
 | Sync | 创建同步任务、选择空间/节点、查看进度 |
 | Documents | 文档索引状态、更新时间、chunk 数 |
-| Settings | 本地模型服务地址、Milvus 连接、飞书配置检查 |
+| Settings | 通用服务地址、Milvus 连接、飞书配置检查 |
 
 交互原则：
 

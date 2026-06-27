@@ -5,30 +5,24 @@
 ## 当前约束
 
 - 远程仓库：`git@github.com:XueGang-AI/feishu-knowledge-rag.git`
-- 当前本地目录尚未初始化为 git 仓库，首次开发前需要 `git init` 或 clone 远程仓库。
 - 不要提交飞书 app secret、tenant access token、用户 cookie、模型下载 token、Milvus 数据目录。
-- 本阶段只沉淀文档与方案，不实现业务代码。
 
-## 本机已确认环境
+## 运行约定
 
-- bge-m3：已存在本地项目 `/Users/xuegang/Desktop/My Project/bge-m3-local`，已缓存 `BAAI/bge-m3` 权重，输出 dense 维度 1024。
 - 本项目不默认启动 BGE、Reranker、Qwen 或 Milvus；默认只连接通用服务地址。
 - 通用 Embedding 地址：`http://127.0.0.1:8010`。
 - 通用 Reranker 地址：`http://127.0.0.1:8020`。
 - 通用 LLM 地址：`http://127.0.0.1:8030/v1`。
 - 通用 Milvus 地址：`http://127.0.0.1:19530`。
-- bge-reranker-v2-m3：本机未发现缓存，需要下载并部署。
-- Qwen3.6-27B-GGUF：本机未发现 GGUF 文件，需要下载 `Qwen3.6-27B-Q4_K_M.gguf` 并用 llama.cpp 部署。
-- llama.cpp：未发现 `llama-server` 或 `llama-cli`，需要安装或编译。
 
 ## 技术方向
 
 - 后端：Python + FastAPI。
-- 同步状态库：SQLite 优先，DuckDB 可用于后续分析和离线检查。
+- 同步状态库：SQLite。
 - 文档结构：以 JSON block AST 为主，Markdown 为可读中间表示。
-- Embedding：调用本地 bge-m3 服务，优先 MPS。
-- 向量库：本地 Milvus standalone，collection 维度 1024。
-- Rerank：`BAAI/bge-reranker-v2-m3`，建议独立 FastAPI 服务或后端内嵌模块，先独立服务便于资源隔离。
+- Embedding：调用通用 Embedding 服务。
+- 向量库：调用通用 Milvus 服务，collection 维度 1024。
+- Rerank：调用通用 Reranker 服务。
 - 生成：通过通用 OpenAI-compatible LLM 服务访问 Qwen，默认 `http://127.0.0.1:8030/v1`。
 - 前端：Next.js / React，端口 `3300`。
 

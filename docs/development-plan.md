@@ -188,7 +188,7 @@
 - 实现来源侧栏：标题、section_path、content_preview、飞书链接、block_ids。
 - 实现 Sync 页面：创建任务、查看进度、失败详情。
 - 实现 Documents 页面：文档索引状态。
-- 实现 Settings 页面：本地模型服务健康检查。
+- 实现 Settings 页面：通用服务健康检查。
 
 验收标准：
 

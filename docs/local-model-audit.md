@@ -13,7 +13,6 @@
 | Rerank | `BAAI/bge-reranker-v2-m3` | 未发现 HF 缓存 | 未部署 | 下载模型，部署 reranker 服务 |
 | Generation | `lmstudio-community/Qwen3.6-27B-GGUF` | 未发现 `.gguf` 文件 | 未部署 | 下载 `Qwen3.6-27B-Q4_K_M.gguf` |
 | Inference Server | llama.cpp | 未发现 `llama-server` / `llama-cli` | 未安装 | 安装或编译 llama.cpp，提供 OpenAI-compatible API |
-| Ollama / LM Studio | 可选 | 未发现 `~/.ollama` / `~/.lmstudio` | 未部署 | 不作为首选 |
 
 ## 已确认的本地文件与服务
 
