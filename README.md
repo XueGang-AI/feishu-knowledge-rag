@@ -25,7 +25,7 @@
 | 能力 | 地址 | 说明 |
 |------|------|------|
 | Embedding | `http://127.0.0.1:8010` | `/Users/xuegang/Desktop/My Project/Model/bge-m3-service` |
-| Reranker | `http://127.0.0.1:8020` | `/Users/xuegang/Desktop/My Project/Model/bge-reranker-service` |
+| Reranker | `http://127.0.0.1:8020` | `/Users/xuegang/Desktop/My Project/Model/bge-reranker-service`，默认 CPU 推理 |
 | LLM | `http://127.0.0.1:8040/v1` | `/Users/xuegang/Desktop/My Project/Model/gemma-4-12b-llamacpp-service` |
 | Qwen LLM（可选/回退/对比） | `http://127.0.0.1:8030/v1` | `/Users/xuegang/Desktop/My Project/Model/qwen-llamacpp-service` |
 | Milvus | `http://127.0.0.1:19530` | 通用 Milvus 服务 |
@@ -46,6 +46,8 @@
 这些 wrapper 默认调用 `Model/` 下的通用服务；可用 `BGE_M3_PROJECT_DIR`、`RERANKER_SERVICE_DIR`、`QWEN_LLAMACPP_SERVICE_DIR`、`GEMMA_LLAMACPP_SERVICE_DIR` 覆盖服务工程路径。
 
 `./scripts/download-models.sh` 默认下载 bge-reranker-v2-m3 与 Gemma 主 GGUF；如需同时下载 Qwen 对比模型，使用 `DOWNLOAD_QWEN=true ./scripts/download-models.sh`。
+
+`./scripts/check-local-services.sh` 默认检查 backend、embedding、reranker、Gemma LLM 和 Milvus；Qwen `8030` 不默认启动，也不默认检查。需要对比 Qwen 时再执行 `CHECK_QWEN=true ./scripts/check-local-services.sh`。
 
 ## Gemma 默认与 Qwen 可选
 
@@ -132,7 +134,7 @@ curl http://127.0.0.1:3301/health
 ```
 
 当前已实现后端基础骨架、SQLite 状态库初始化、多飞书账号同步任务框架、文档解析切块、Milvus 索引客户端、检索、重排、自动/直接/RAG 问答、来源查看、weekly scan 和同步状态 API。
-如果 Reranker 推理接口不可用，`/api/search` 和 RAG 问答会降级使用 Milvus 原始召回结果继续返回，此时结果中的 `rerank_score` 为 `null`，`/health` 会把 `reranker` 标记为不可用。
+Reranker 服务默认用 CPU 加载 bge-reranker-v2-m3，避免本机自动选设备时触发 FlagEmbedding meta tensor 迁移异常。如果 Reranker 推理接口不可用，`/api/search` 和 RAG 问答会降级使用 Milvus 原始召回结果继续返回，此时结果中的 `rerank_score` 为 `null`，`/health` 会把 `reranker` 标记为不可用。
 
 ## 前端开发启动
 

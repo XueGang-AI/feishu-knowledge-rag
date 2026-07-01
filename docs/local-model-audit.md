@@ -10,7 +10,7 @@
 |------|---------------|----------|----------|----------|
 | Embedding | `BAAI/bge-m3` | `/Users/xuegang/Desktop/My Project/Model/bge-m3-service`，模型入口 `/Users/xuegang/models/bge-m3` | 权重存在，服务是否运行由通用服务管理 | 本项目默认连接 `8010`，不自动启动 |
 | Vector DB | Milvus standalone | Docker 镜像 `milvusdb/milvus:v2.6.18`、`quay.io/coreos/etcd:v3.5.25`、`minio/minio`、`zilliz/attu:v2.6.3` | 通用 Milvus 由外部管理 | 本项目默认连接 `19530`，不自动启动 |
-| Rerank | `BAAI/bge-reranker-v2-m3` | `/Users/xuegang/Desktop/My Project/Model/bge-reranker-service`，模型入口 `/Users/xuegang/models/bge-reranker-v2-m3` | 权重存在，服务由通用服务管理 | 本项目默认连接 `8020`，不自动承载 |
+| Rerank | `BAAI/bge-reranker-v2-m3` | `/Users/xuegang/Desktop/My Project/Model/bge-reranker-service`，模型入口 `/Users/xuegang/models/bge-reranker-v2-m3` | 权重存在，服务由通用服务管理，默认 CPU 推理 | 本项目默认连接 `8020`，不自动承载 |
 | Generation | `google/gemma-4-12B-it-qat-q4_0-gguf` | `/Users/xuegang/Desktop/My Project/Model/gemma-4-12b-llamacpp-service`，GGUF 文件 `/Users/xuegang/models/gemma-4-12b-it-qat-q4_0-gguf/gemma-4-12b-it-qat-q4_0.gguf` | 权重存在，服务由通用服务管理 | 本项目默认连接 `8040/v1`，不自动承载 |
 | Generation Fallback / Comparison | `lmstudio-community/Qwen3.6-27B-GGUF` | `/Users/xuegang/Desktop/My Project/Model/qwen-llamacpp-service`，GGUF 文件 `/Users/xuegang/models/qwen3.6-27b-gguf/Qwen3.6-27B-Q4_K_M.gguf` | 权重存在，服务由通用服务管理 | 可选回退/对比时连接 `8030/v1`，不自动承载 |
 | Inference Server | llama.cpp | `llama-server` 用于 Gemma 和 Qwen 通用服务 | 已有通用封装 | 提供 OpenAI-compatible API |
@@ -109,6 +109,8 @@ curl --max-time 10 -sf \
   --header "Content-Type: application/json" \
   --data '{"query":"health check","documents":[{"id":"health","text":"health check"}],"top_n":1}'
 ```
+
+默认使用 `RERANKER_DEVICE=cpu`，避免 FlagEmbedding 在本机自动选设备时出现 `Cannot copy out of meta tensor`。如需实验其他设备，可显式设置 `RERANKER_DEVICE=auto` 或具体设备值后再启动。
 
 Feishu RAG 兼容 wrapper：
 

@@ -390,7 +390,7 @@ content:
 127.0.0.1:8010  通用 Embedding
 127.0.0.1:8020  通用 Reranker
 127.0.0.1:8040  通用 LLM OpenAI API（Gemma 默认）
-127.0.0.1:8030  通用 Qwen OpenAI API（可选/回退/对比）
+127.0.0.1:8030  通用 Qwen OpenAI API（可选/回退/对比，不默认启动）
 127.0.0.1:19530 通用 Milvus
 ```
 
@@ -413,6 +413,8 @@ MILVUS_LEGACY_COLLECTION=feishu_chunks_v1
 
 RERANKER_BASE_URL=http://127.0.0.1:8020
 RERANKER_MODEL=BAAI/bge-reranker-v2-m3
+# Reranker service-side default:
+# RERANKER_DEVICE=cpu
 
 LLM_BASE_URL=http://127.0.0.1:8040/v1
 LLM_MODEL=gemma-4-12b-it-qat-q4_0

@@ -27,7 +27,7 @@
 - `bge-m3-service` 已位于 `/Users/xuegang/Desktop/My Project/Model/bge-m3-service`。
 - BGE 权重入口已位于 `/Users/xuegang/models/bge-m3`。
 - Feishu RAG 默认仍通过 `http://127.0.0.1:8010` 调用 embedding 服务。
-- `bge-reranker-service` 已位于 `/Users/xuegang/Desktop/My Project/Model/bge-reranker-service`，默认引用 `/Users/xuegang/models/bge-reranker-v2-m3`，端口 `8020`。
+- `bge-reranker-service` 已位于 `/Users/xuegang/Desktop/My Project/Model/bge-reranker-service`，默认引用 `/Users/xuegang/models/bge-reranker-v2-m3`，端口 `8020`，默认 `RERANKER_DEVICE=cpu`。
 - `qwen-llamacpp-service` 已位于 `/Users/xuegang/Desktop/My Project/Model/qwen-llamacpp-service`，默认引用 `/Users/xuegang/models/qwen3.6-27b-gguf/Qwen3.6-27B-Q4_K_M.gguf`，端口 `8030`。
 - `gemma-4-12b-llamacpp-service` 已位于 `/Users/xuegang/Desktop/My Project/Model/gemma-4-12b-llamacpp-service`，默认引用 `/Users/xuegang/models/gemma-4-12b-it-qat-q4_0-gguf/gemma-4-12b-it-qat-q4_0.gguf`，端口 `8040`，是 Feishu RAG 当前默认生成服务。
 - Feishu RAG 中 `scripts/start-reranker.sh`、`scripts/start-qwen-llamacpp.sh` 与 `scripts/start-gemma-llamacpp.sh` 已改为兼容 wrapper，默认调用 `Model/` 下的新服务。
@@ -61,9 +61,9 @@ curl --max-time 10 -sf \
   --header "Content-Type: application/json" \
   --data '{"query":"health check","documents":[{"id":"health","text":"health check"}],"top_n":1}'
 curl -sf http://127.0.0.1:8040/v1/models
-# Optional Qwen fallback/comparison:
-curl -sf http://127.0.0.1:8030/v1/models
 ./scripts/check-local-services.sh
+# Optional Qwen fallback/comparison:
+CHECK_QWEN=true ./scripts/check-local-services.sh
 uv run pytest -q
 ```
 

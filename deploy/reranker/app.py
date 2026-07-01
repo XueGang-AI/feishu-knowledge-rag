@@ -7,6 +7,8 @@ from typing import Any
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
+DEFAULT_MODEL_PATH = "/Users/xuegang/models/bge-reranker-v2-m3"
+
 
 class RerankDocument(BaseModel):
     id: str
@@ -32,7 +34,16 @@ class RerankResponse(BaseModel):
 
 
 def model_id() -> str:
-    return os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
+    return os.getenv("RERANKER_MODEL_PATH") or os.getenv(
+        "RERANKER_MODEL", DEFAULT_MODEL_PATH
+    )
+
+
+def reranker_device() -> str | None:
+    value = os.getenv("RERANKER_DEVICE", "cpu").strip()
+    if value.lower() in {"", "auto", "none"}:
+        return None
+    return value
 
 
 @lru_cache
@@ -40,7 +51,9 @@ def load_reranker() -> Any:
     from FlagEmbedding import FlagReranker
 
     use_fp16 = os.getenv("RERANKER_USE_FP16", "false").lower() == "true"
-    return FlagReranker(model_id(), use_fp16=use_fp16)
+    device = reranker_device()
+    kwargs = {"devices": device} if device else {}
+    return FlagReranker(model_id(), use_fp16=use_fp16, **kwargs)
 
 
 app = FastAPI(title="BGE Reranker Service", version="0.1.0")
@@ -48,7 +61,7 @@ app = FastAPI(title="BGE Reranker Service", version="0.1.0")
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", "model": model_id()}
+    return {"status": "ok", "model": model_id(), "device": reranker_device() or "auto"}
 
 
 @app.post("/rerank", response_model=RerankResponse)

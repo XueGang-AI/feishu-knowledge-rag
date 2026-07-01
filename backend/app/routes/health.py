@@ -10,10 +10,14 @@ from backend.app.db.sqlite import initialize_database, ping
 router = APIRouter(tags=["health"])
 
 HEALTHCHECK_TIMEOUT_CAP_SECONDS = 3.0
+RERANKER_HEALTHCHECK_TIMEOUT_CAP_SECONDS = 15.0
 
 
-def _health_timeout(configured_timeout: float) -> float:
-    return min(configured_timeout, HEALTHCHECK_TIMEOUT_CAP_SECONDS)
+def _health_timeout(
+    configured_timeout: float,
+    cap_seconds: float = HEALTHCHECK_TIMEOUT_CAP_SECONDS,
+) -> float:
+    return min(configured_timeout, cap_seconds)
 
 
 async def _check_http_get(name: str, url: str, timeout_seconds: float) -> dict[str, Any]:
@@ -86,7 +90,10 @@ async def health() -> dict[str, Any]:
         _check_http_post(
             "reranker",
             f"{settings.reranker_base_url}/rerank",
-            _health_timeout(settings.reranker_timeout_seconds),
+            _health_timeout(
+                settings.reranker_timeout_seconds,
+                RERANKER_HEALTHCHECK_TIMEOUT_CAP_SECONDS,
+            ),
             {
                 "model": settings.reranker_model,
                 "query": "health check",

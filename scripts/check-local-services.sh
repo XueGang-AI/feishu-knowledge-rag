@@ -28,7 +28,9 @@ check_get "backend" "http://127.0.0.1:3301/health"
 check_get "embedding" "http://127.0.0.1:8010/health"
 check_post_json "reranker" "http://127.0.0.1:8020/rerank" '{"query":"health check","documents":[{"id":"health","text":"health check"}],"top_n":1}'
 check_get "llm" "http://127.0.0.1:8040/v1/models"
-check_get "qwen" "http://127.0.0.1:8030/v1/models"
+if [ "${CHECK_QWEN:-false}" = "true" ]; then
+  check_get "qwen" "http://127.0.0.1:8030/v1/models"
+fi
 
 printf "%-12s %s\n" "milvus" "http://127.0.0.1:19530/v2/vectordb/collections/list"
 curl --max-time 3 --fail --silent --show-error \
