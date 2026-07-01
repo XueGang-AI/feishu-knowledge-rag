@@ -1,18 +1,19 @@
 # 本机模型与部署判断
 
-审计时间：2026-06-27，时区：Asia/Shanghai。
+审计时间：2026-06-27，时区：Asia/Shanghai。模型服务拆分状态更新：2026-07-01。
 
 ## 结论
 
-你当前机器上可以直接复用的是 bge-m3 embedding 服务工程和 Milvus Docker 镜像/容器；需要新增部署的是 bge-reranker-v2-m3、Qwen3.6-27B-GGUF Q4_K_M 和 llama.cpp。
+你当前机器上可以直接复用的是 `Model/` 下的 bge-m3 embedding、bge-reranker-v2-m3、Qwen llama.cpp、Gemma llama.cpp 服务工程，以及通用 Milvus Docker 服务。
 
 | 能力 | 目标模型/组件 | 本机发现 | 当前状态 | 部署判断 |
 |------|---------------|----------|----------|----------|
-| Embedding | `BAAI/bge-m3` | `/Users/xuegang/Desktop/My Project/bge-m3-local`，以及 HF 缓存 `/Users/xuegang/.cache/huggingface/hub/models--BAAI--bge-m3` | 权重存在，服务是否运行由通用服务管理 | 本项目默认连接 `8010`，不自动启动 |
+| Embedding | `BAAI/bge-m3` | `/Users/xuegang/Desktop/My Project/Model/bge-m3-service`，模型入口 `/Users/xuegang/models/bge-m3` | 权重存在，服务是否运行由通用服务管理 | 本项目默认连接 `8010`，不自动启动 |
 | Vector DB | Milvus standalone | Docker 镜像 `milvusdb/milvus:v2.6.18`、`quay.io/coreos/etcd:v3.5.25`、`minio/minio`、`zilliz/attu:v2.6.3` | 通用 Milvus 由外部管理 | 本项目默认连接 `19530`，不自动启动 |
-| Rerank | `BAAI/bge-reranker-v2-m3` | 未发现 HF 缓存 | 未部署 | 下载模型，部署 reranker 服务 |
-| Generation | `lmstudio-community/Qwen3.6-27B-GGUF` | 未发现 `.gguf` 文件 | 未部署 | 下载 `Qwen3.6-27B-Q4_K_M.gguf` |
-| Inference Server | llama.cpp | 未发现 `llama-server` / `llama-cli` | 未安装 | 安装或编译 llama.cpp，提供 OpenAI-compatible API |
+| Rerank | `BAAI/bge-reranker-v2-m3` | `/Users/xuegang/Desktop/My Project/Model/bge-reranker-service`，模型入口 `/Users/xuegang/models/bge-reranker-v2-m3` | 权重存在，服务由通用服务管理 | 本项目默认连接 `8020`，不自动承载 |
+| Generation | `google/gemma-4-12B-it-qat-q4_0-gguf` | `/Users/xuegang/Desktop/My Project/Model/gemma-4-12b-llamacpp-service`，GGUF 文件 `/Users/xuegang/models/gemma-4-12b-it-qat-q4_0-gguf/gemma-4-12b-it-qat-q4_0.gguf` | 权重存在，服务由通用服务管理 | 本项目默认连接 `8040/v1`，不自动承载 |
+| Generation Fallback / Comparison | `lmstudio-community/Qwen3.6-27B-GGUF` | `/Users/xuegang/Desktop/My Project/Model/qwen-llamacpp-service`，GGUF 文件 `/Users/xuegang/models/qwen3.6-27b-gguf/Qwen3.6-27B-Q4_K_M.gguf` | 权重存在，服务由通用服务管理 | 可选回退/对比时连接 `8030/v1`，不自动承载 |
+| Inference Server | llama.cpp | `llama-server` 用于 Gemma 和 Qwen 通用服务 | 已有通用封装 | 提供 OpenAI-compatible API |
 
 ## 已确认的本地文件与服务
 
@@ -21,7 +22,7 @@
 本机已有：
 
 ```text
-/Users/xuegang/Desktop/My Project/bge-m3-local
+/Users/xuegang/Desktop/My Project/Model/bge-m3-service
 /Users/xuegang/.cache/huggingface/hub/models--BAAI--bge-m3
 ```
 
@@ -35,15 +36,15 @@
 - 支持原生 `POST /v1/bge-m3/encode`，可返回 dense、sparse、ColBERT。
 - 本项目期望通用服务端口为 `8010`。
 
-当前问题：
+当前状态：
 
-- 服务未运行。
+- 服务运行状态以 `http://127.0.0.1:8010/health` 为准。
 - 本项目不再依赖旧的本地专用端口，统一连接通用 Embedding 服务。
 
 建议启动方式：
 
 ```bash
-cd "/Users/xuegang/Desktop/My Project/bge-m3-local"
+cd "/Users/xuegang/Desktop/My Project/Model/bge-m3-service"
 BGE_PORT=8010 ./scripts/start.sh mps
 curl http://127.0.0.1:8010/info
 ```
@@ -67,31 +68,13 @@ minio/minio:RELEASE.2024-05-28T17-19-04Z
 zilliz/attu:v2.6.3
 ```
 
-当前容器状态：
+当前状态：
 
-```text
-milvus-standalone  Exited
-milvus-etcd        Exited
-milvus-minio       Exited
-milvus-attu        由外部或隔离 compose 管理
-```
-
-当前发现的问题：
-
-- Milvus API `127.0.0.1:19530` 不可连接。
+- Milvus 由通用 Docker 服务管理，本项目不默认启动。
 - 本项目健康检查通过 Milvus API `127.0.0.1:19530` 判断可用性。
-- 实际项目目录在 `/Users/xuegang/Desktop/milvus-local`。
-- 现有脚本硬编码 `cd "$HOME/milvus-local"`，会失败。
-- Docker inspect 显示部分旧容器 mount 曾指向 `/Users/xuegang/milvus-local/...`，与现有目录不一致。
-
-建议处理：
-
-1. 在本项目中新增可复现的 Milvus compose 配置，或修复 `/Users/xuegang/Desktop/milvus-local/scripts/*.sh` 的路径。
-2. 确认数据目录统一为 `/Users/xuegang/Desktop/milvus-local/volumes` 或迁移到本项目 `deploy/milvus/volumes`。
-3. 启动 `etcd`、`minio`、`standalone` 后验证：
+- 运行状态以如下 health check 为准：
 
 ```bash
-docker compose -f "/Users/xuegang/Desktop/milvus-local/docker-compose.yml" up -d etcd minio standalone
 curl --request POST http://127.0.0.1:19530/v2/vectordb/collections/list \
   --header "Content-Type: application/json" \
   --data '{"dbName":"default"}'
@@ -102,28 +85,36 @@ curl --request POST http://127.0.0.1:19530/v2/vectordb/collections/list \
 ```env
 MILVUS_URI=http://127.0.0.1:19530
 MILVUS_DB=default
-MILVUS_COLLECTION=feishu_chunks_v1
+MILVUS_COLLECTION=feishu_chunks_v2
+MILVUS_LEGACY_COLLECTION=feishu_chunks_v1
 ```
 
 ### bge-reranker-v2-m3
 
-本机未发现：
+本机当前使用：
 
 ```text
-models--BAAI--bge-reranker-v2-m3
+/Users/xuegang/Desktop/My Project/Model/bge-reranker-service
+/Users/xuegang/models/bge-reranker-v2-m3
 ```
 
-需要下载：
+推荐启动方式：
 
 ```bash
-huggingface-cli download BAAI/bge-reranker-v2-m3
+cd "/Users/xuegang/Desktop/My Project/Model/bge-reranker-service"
+./scripts/start.sh
+curl --max-time 10 -sf \
+  --request POST \
+  --url http://127.0.0.1:8020/rerank \
+  --header "Content-Type: application/json" \
+  --data '{"query":"health check","documents":[{"id":"health","text":"health check"}],"top_n":1}'
 ```
 
-推荐部署方式：
+Feishu RAG 兼容 wrapper：
 
-- 独立 FastAPI 服务，通用端口 `8020`。
-- 后端通过 HTTP 调用 `/rerank`，输入 query 和候选 chunk，输出 score 排序。
-- 优先尝试 MPS；若 PyTorch/MPS 不稳定，切换 CPU 小 batch。
+```bash
+./scripts/start-reranker.sh
+```
 
 建议接口：
 
@@ -153,48 +144,85 @@ POST http://127.0.0.1:8020/rerank
 }
 ```
 
-### Qwen3.6-27B-GGUF Q4_K_M
+### Qwen3.6-27B-GGUF Q4_K_M（可选回退/对比）
 
-本机未发现 `.gguf` 文件，也未发现 `~/.lmstudio` 或 `~/.ollama` 模型目录。
-
-已确认目标 Hugging Face 仓库与文件名：
+本机当前使用：
 
 ```text
-repo: lmstudio-community/Qwen3.6-27B-GGUF
-file: Qwen3.6-27B-Q4_K_M.gguf
+/Users/xuegang/Desktop/My Project/Model/qwen-llamacpp-service
+/Users/xuegang/models/qwen3.6-27b-gguf/Qwen3.6-27B-Q4_K_M.gguf
 ```
 
 注意：`Qwen3.6-27B-GGUF` 是仓库名，`Q4_K_M` 是具体量化档位。项目配置不要把 `Q4_K_M` 写成模型名。
 
-推荐下载目录：
-
-```text
-/Users/xuegang/models/qwen3.6-27b-gguf/Qwen3.6-27B-Q4_K_M.gguf
-```
-
-推荐部署方式：
-
-- 安装或编译 llama.cpp。
-- 使用 `llama-server` 提供 OpenAI-compatible API。
-- 服务端口建议 `8030`。
-
-示例启动命令：
+推荐启动方式：
 
 ```bash
-llama-server \
-  -m "/Users/xuegang/models/qwen3.6-27b-gguf/Qwen3.6-27B-Q4_K_M.gguf" \
-  --host 127.0.0.1 \
-  --port 8030 \
-  --ctx-size 32768 \
-  --jinja \
-  --parallel 1
+cd "/Users/xuegang/Desktop/My Project/Model/qwen-llamacpp-service"
+./scripts/start.sh
+curl -sf http://127.0.0.1:8030/v1/models
 ```
 
-本项目后端配置：
+Feishu RAG 兼容 wrapper：
+
+```bash
+./scripts/start-qwen-llamacpp.sh
+```
+
+可选回退/对比配置：
 
 ```env
 LLM_BASE_URL=http://127.0.0.1:8030/v1
 LLM_MODEL=Qwen3.6-27B-GGUF:Q4_K_M
+LLM_CONTEXT_SIZE=32768
+```
+
+### Gemma 4 12B IT QAT Q4_0 GGUF（默认生成模型）
+
+本机默认生成服务使用：
+
+```text
+/Users/xuegang/Desktop/My Project/Model/gemma-4-12b-llamacpp-service
+/Users/xuegang/models/gemma-4-12b-it-qat-q4_0-gguf/gemma-4-12b-it-qat-q4_0.gguf
+```
+
+仓库：
+
+```text
+google/gemma-4-12B-it-qat-q4_0-gguf
+```
+
+主文件：
+
+```text
+gemma-4-12b-it-qat-q4_0.gguf
+```
+
+可选多模态投影文件：
+
+```text
+mmproj-gemma-4-12b-it-qat-q4_0.gguf
+```
+
+推荐启动方式：
+
+```bash
+cd "/Users/xuegang/Desktop/My Project/Model/gemma-4-12b-llamacpp-service"
+./scripts/start.sh
+curl -sf http://127.0.0.1:8040/v1/models
+```
+
+Feishu RAG 兼容 wrapper：
+
+```bash
+./scripts/start-gemma-llamacpp.sh
+```
+
+本项目后端默认配置：
+
+```env
+LLM_BASE_URL=http://127.0.0.1:8040/v1
+LLM_MODEL=gemma-4-12b-it-qat-q4_0
 LLM_CONTEXT_SIZE=32768
 ```
 
@@ -203,14 +231,15 @@ LLM_CONTEXT_SIZE=32768
 1. 确认通用 Milvus：先保证 `19530` 可用。
 2. 确认通用 Embedding：使用 `8010`，验证 `/v1/embeddings`。
 3. 确认通用 Reranker：使用 `8020`，验证 query-document score。
-4. 确认通用 LLM：使用 `8030/v1`，验证 chat completion。
-5. 启动本项目 backend：使用 `3301`，串联 embedding、Milvus、reranker、LLM。
-6. 启动 frontend：使用 `3300`。
+4. 确认通用 Gemma LLM：使用 `8040/v1`，验证 chat completion。
+5. 如需回退/对比，再确认通用 Qwen LLM：使用 `8030/v1`，验证 chat completion。
+6. 启动本项目 backend：使用 `3301`，串联 embedding、Milvus、reranker、LLM。
+7. 启动 frontend：使用 `3300`。
 
 ## 需要写入项目配置的模型字段
 
 ```env
-EMBEDDING_PROVIDER=bge-m3-local
+EMBEDDING_PROVIDER=bge-m3-service
 EMBEDDING_MODEL=BAAI/bge-m3
 EMBEDDING_BASE_URL=http://127.0.0.1:8010
 EMBEDDING_DIM=1024
@@ -220,11 +249,18 @@ RERANKER_MODEL=BAAI/bge-reranker-v2-m3
 RERANKER_BASE_URL=http://127.0.0.1:8020
 
 LLM_PROVIDER=llama.cpp
-LLM_MODEL_REPO=lmstudio-community/Qwen3.6-27B-GGUF
-LLM_MODEL_FILE=Qwen3.6-27B-Q4_K_M.gguf
-LLM_MODEL=Qwen3.6-27B-GGUF:Q4_K_M
-LLM_BASE_URL=http://127.0.0.1:8030/v1
+LLM_MODEL_REPO=google/gemma-4-12B-it-qat-q4_0-gguf
+LLM_MODEL_FILE=gemma-4-12b-it-qat-q4_0.gguf
+LLM_MODEL=gemma-4-12b-it-qat-q4_0
+LLM_BASE_URL=http://127.0.0.1:8040/v1
+
+# Optional Qwen 27B fallback/comparison:
+# LLM_MODEL_REPO=lmstudio-community/Qwen3.6-27B-GGUF
+# LLM_MODEL_FILE=Qwen3.6-27B-Q4_K_M.gguf
+# LLM_MODEL=Qwen3.6-27B-GGUF:Q4_K_M
+# LLM_BASE_URL=http://127.0.0.1:8030/v1
 
 MILVUS_URI=http://127.0.0.1:19530
-MILVUS_COLLECTION=feishu_chunks_v1
+MILVUS_COLLECTION=feishu_chunks_v2
+MILVUS_LEGACY_COLLECTION=feishu_chunks_v1
 ```

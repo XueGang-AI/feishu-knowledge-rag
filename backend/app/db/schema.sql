@@ -3,6 +3,7 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS sync_jobs (
     job_id TEXT PRIMARY KEY,
+    account_id TEXT,
     scope_type TEXT NOT NULL,
     scope_id TEXT,
     status TEXT NOT NULL,
@@ -15,16 +16,22 @@ CREATE TABLE IF NOT EXISTS sync_jobs (
     finished_at TEXT
 );
 
+CREATE INDEX IF NOT EXISTS idx_sync_jobs_account_status
+ON sync_jobs(account_id, status, scope_type);
+
 CREATE TABLE IF NOT EXISTS spaces (
-    space_id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
     name TEXT NOT NULL,
     description TEXT,
     updated_time INTEGER,
-    synced_at TEXT NOT NULL
+    synced_at TEXT NOT NULL,
+    PRIMARY KEY(account_id, space_id)
 );
 
 CREATE TABLE IF NOT EXISTS nodes (
-    node_token TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    node_token TEXT NOT NULL,
     space_id TEXT NOT NULL,
     parent_node_token TEXT,
     obj_token TEXT,
@@ -33,14 +40,17 @@ CREATE TABLE IF NOT EXISTS nodes (
     source_url TEXT,
     updated_time INTEGER,
     deleted_at TEXT,
-    synced_at TEXT NOT NULL
+    synced_at TEXT NOT NULL,
+    PRIMARY KEY(account_id, node_token),
+    FOREIGN KEY(account_id, space_id) REFERENCES spaces(account_id, space_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_nodes_space_id ON nodes(space_id);
-CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent_node_token);
+CREATE INDEX IF NOT EXISTS idx_nodes_account_space_id ON nodes(account_id, space_id);
+CREATE INDEX IF NOT EXISTS idx_nodes_account_parent ON nodes(account_id, parent_node_token);
 
 CREATE TABLE IF NOT EXISTS documents (
-    doc_token TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    doc_token TEXT NOT NULL,
     space_id TEXT NOT NULL,
     node_token TEXT NOT NULL,
     doc_type TEXT NOT NULL,
@@ -49,14 +59,17 @@ CREATE TABLE IF NOT EXISTS documents (
     updated_time INTEGER,
     block_hash TEXT,
     deleted_at TEXT,
-    synced_at TEXT NOT NULL
+    synced_at TEXT NOT NULL,
+    PRIMARY KEY(account_id, doc_token),
+    FOREIGN KEY(account_id, space_id) REFERENCES spaces(account_id, space_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_documents_space_id ON documents(space_id);
-CREATE INDEX IF NOT EXISTS idx_documents_node_token ON documents(node_token);
+CREATE INDEX IF NOT EXISTS idx_documents_account_space_id ON documents(account_id, space_id);
+CREATE INDEX IF NOT EXISTS idx_documents_account_node_token ON documents(account_id, node_token);
 
 CREATE TABLE IF NOT EXISTS blocks (
-    block_id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    block_id TEXT NOT NULL,
     doc_token TEXT NOT NULL,
     parent_block_id TEXT,
     block_type TEXT NOT NULL,
@@ -65,14 +78,16 @@ CREATE TABLE IF NOT EXISTS blocks (
     raw_json TEXT NOT NULL,
     content_hash TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    FOREIGN KEY(doc_token) REFERENCES documents(doc_token)
+    PRIMARY KEY(account_id, block_id),
+    FOREIGN KEY(account_id, doc_token) REFERENCES documents(account_id, doc_token)
 );
 
-CREATE INDEX IF NOT EXISTS idx_blocks_doc_token ON blocks(doc_token);
-CREATE INDEX IF NOT EXISTS idx_blocks_parent ON blocks(parent_block_id);
+CREATE INDEX IF NOT EXISTS idx_blocks_account_doc_token ON blocks(account_id, doc_token);
+CREATE INDEX IF NOT EXISTS idx_blocks_account_parent ON blocks(account_id, parent_block_id);
 
 CREATE TABLE IF NOT EXISTS chunks (
-    chunk_id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    chunk_id TEXT NOT NULL,
     space_id TEXT NOT NULL,
     node_token TEXT NOT NULL,
     doc_token TEXT NOT NULL,
@@ -86,12 +101,13 @@ CREATE TABLE IF NOT EXISTS chunks (
     updated_time INTEGER,
     indexed_at TEXT,
     deleted_at TEXT,
-    FOREIGN KEY(doc_token) REFERENCES documents(doc_token)
+    PRIMARY KEY(account_id, chunk_id),
+    FOREIGN KEY(account_id, doc_token) REFERENCES documents(account_id, doc_token)
 );
 
-CREATE INDEX IF NOT EXISTS idx_chunks_doc_token ON chunks(doc_token);
-CREATE INDEX IF NOT EXISTS idx_chunks_content_hash ON chunks(content_hash);
-CREATE INDEX IF NOT EXISTS idx_chunks_deleted_at ON chunks(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_chunks_account_doc_token ON chunks(account_id, doc_token);
+CREATE INDEX IF NOT EXISTS idx_chunks_account_content_hash ON chunks(account_id, content_hash);
+CREATE INDEX IF NOT EXISTS idx_chunks_account_deleted_at ON chunks(account_id, deleted_at);
 
 CREATE TABLE IF NOT EXISTS index_events (
     event_id TEXT PRIMARY KEY,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from uuid import uuid4
 
 from backend.app.core.time import utc_now_iso
 from backend.app.db.sqlite import connect, initialize_database
@@ -13,6 +14,33 @@ class StateRepository:
     def __init__(self, sqlite_path) -> None:
         self.sqlite_path = sqlite_path
         initialize_database(sqlite_path)
+
+    def create_job(
+        self,
+        scope_type: str,
+        scope_id: str | None = None,
+        account_id: str | None = None,
+        status: str = "pending",
+    ) -> dict[str, Any]:
+        job_id = str(uuid4())
+        now = utc_now_iso()
+        with connect(self.sqlite_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO sync_jobs (
+                    job_id, account_id, scope_type, scope_id, status,
+                    total_items, processed_items, failed_items,
+                    error_message, created_at, started_at, finished_at
+                )
+                VALUES (?, ?, ?, ?, ?, 0, 0, 0, NULL, ?, NULL, NULL)
+                """,
+                (job_id, account_id, scope_type, scope_id, status, now),
+            )
+            row = connection.execute(
+                "SELECT * FROM sync_jobs WHERE job_id = ?",
+                (job_id,),
+            ).fetchone()
+        return dict(row)
 
     def mark_job_running(self, job_id: str) -> None:
         now = utc_now_iso()
@@ -34,13 +62,16 @@ class StateRepository:
                 (now, job_id),
             )
 
-    def mark_job_failed(self, job_id: str, error_message: str) -> None:
+    def mark_job_failed(
+        self, job_id: str, error_message: str, increment_failed: bool = True
+    ) -> None:
         now = utc_now_iso()
+        failed_sql = "failed_items = failed_items + 1," if increment_failed else ""
         with connect(self.sqlite_path) as connection:
             connection.execute(
-                """
+                f"""
                 UPDATE sync_jobs
-                SET status = 'failed', failed_items = failed_items + 1,
+                SET status = 'failed', {failed_sql}
                     error_message = ?, finished_at = ?
                 WHERE job_id = ?
                 """,
@@ -54,11 +85,22 @@ class StateRepository:
                 (count, job_id),
             )
 
-    def set_job_total(self, job_id: str, total: int) -> None:
+    def increment_job_total(self, job_id: str, count: int = 1) -> None:
         with connect(self.sqlite_path) as connection:
             connection.execute(
-                "UPDATE sync_jobs SET total_items = ? WHERE job_id = ?",
-                (total, job_id),
+                "UPDATE sync_jobs SET total_items = total_items + ? WHERE job_id = ?",
+                (count, job_id),
+            )
+
+    def increment_job_failed(self, job_id: str, error_message: str) -> None:
+        with connect(self.sqlite_path) as connection:
+            connection.execute(
+                """
+                UPDATE sync_jobs
+                SET failed_items = failed_items + 1, error_message = ?
+                WHERE job_id = ?
+                """,
+                (error_message, job_id),
             )
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
@@ -68,19 +110,33 @@ class StateRepository:
             ).fetchone()
         return dict(row) if row else None
 
+    def has_running_weekly_job(self, account_id: str) -> bool:
+        with connect(self.sqlite_path) as connection:
+            row = connection.execute(
+                """
+                SELECT 1 FROM sync_jobs
+                WHERE account_id = ? AND scope_type = 'account' AND status = 'running'
+                LIMIT 1
+                """,
+                (account_id,),
+            ).fetchone()
+        return row is not None
+
     def upsert_space(self, space: FeishuSpace) -> None:
         now = utc_now_iso()
         with connect(self.sqlite_path) as connection:
             connection.execute(
                 """
-                INSERT INTO spaces (space_id, name, description, updated_time, synced_at)
-                VALUES (?, ?, ?, NULL, ?)
-                ON CONFLICT(space_id) DO UPDATE SET
+                INSERT INTO spaces (
+                    account_id, space_id, name, description, updated_time, synced_at
+                )
+                VALUES (?, ?, ?, ?, NULL, ?)
+                ON CONFLICT(account_id, space_id) DO UPDATE SET
                     name = excluded.name,
                     description = excluded.description,
                     synced_at = excluded.synced_at
                 """,
-                (space.space_id, space.name, space.description, now),
+                (space.account_id, space.space_id, space.name, space.description, now),
             )
 
     def upsert_node(self, node: FeishuNode) -> None:
@@ -89,11 +145,11 @@ class StateRepository:
             connection.execute(
                 """
                 INSERT INTO nodes (
-                    node_token, space_id, parent_node_token, obj_token, obj_type, title,
-                    source_url, updated_time, deleted_at, synced_at
+                    account_id, node_token, space_id, parent_node_token, obj_token,
+                    obj_type, title, source_url, updated_time, deleted_at, synced_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
-                ON CONFLICT(node_token) DO UPDATE SET
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+                ON CONFLICT(account_id, node_token) DO UPDATE SET
                     space_id = excluded.space_id,
                     parent_node_token = excluded.parent_node_token,
                     obj_token = excluded.obj_token,
@@ -105,6 +161,7 @@ class StateRepository:
                     synced_at = excluded.synced_at
                 """,
                 (
+                    node.account_id,
                     node.node_token,
                     node.space_id,
                     node.parent_node_token,
@@ -123,18 +180,18 @@ class StateRepository:
         block_hash = blocks_snapshot_hash(blocks)
         with connect(self.sqlite_path) as connection:
             existing = connection.execute(
-                "SELECT block_hash FROM documents WHERE doc_token = ?",
-                (doc_token,),
+                "SELECT block_hash FROM documents WHERE account_id = ? AND doc_token = ?",
+                (node.account_id, doc_token),
             ).fetchone()
             changed = existing is None or existing["block_hash"] != block_hash
             connection.execute(
                 """
                 INSERT INTO documents (
-                    doc_token, space_id, node_token, doc_type, title, source_url,
-                    updated_time, block_hash, deleted_at, synced_at
+                    account_id, doc_token, space_id, node_token, doc_type, title,
+                    source_url, updated_time, block_hash, deleted_at, synced_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
-                ON CONFLICT(doc_token) DO UPDATE SET
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+                ON CONFLICT(account_id, doc_token) DO UPDATE SET
                     space_id = excluded.space_id,
                     node_token = excluded.node_token,
                     doc_type = excluded.doc_type,
@@ -146,6 +203,7 @@ class StateRepository:
                     synced_at = excluded.synced_at
                 """,
                 (
+                    node.account_id,
                     doc_token,
                     node.space_id,
                     node.node_token,
@@ -159,21 +217,25 @@ class StateRepository:
             )
         return changed
 
-    def replace_blocks(self, doc_token: str, blocks: list[FeishuBlock]) -> None:
+    def replace_blocks(self, account_id: str, doc_token: str, blocks: list[FeishuBlock]) -> None:
         now = utc_now_iso()
         hashes = block_hashes(blocks)
         with connect(self.sqlite_path) as connection:
-            connection.execute("DELETE FROM blocks WHERE doc_token = ?", (doc_token,))
+            connection.execute(
+                "DELETE FROM blocks WHERE account_id = ? AND doc_token = ?",
+                (account_id, doc_token),
+            )
             connection.executemany(
                 """
                 INSERT INTO blocks (
-                    block_id, doc_token, parent_block_id, block_type, heading_level,
-                    text, raw_json, content_hash, updated_at
+                    account_id, block_id, doc_token, parent_block_id, block_type,
+                    heading_level, text, raw_json, content_hash, updated_at
                 )
-                VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)
                 """,
                 [
                     (
+                        account_id,
                         block.block_id,
                         doc_token,
                         block.parent_block_id,
@@ -186,22 +248,22 @@ class StateRepository:
                 ],
             )
 
-    def replace_chunks(self, doc_token: str, chunks: list[Chunk]) -> None:
+    def replace_chunks(self, account_id: str, doc_token: str, chunks: list[Chunk]) -> None:
         now = utc_now_iso()
         with connect(self.sqlite_path) as connection:
             connection.execute(
-                "UPDATE chunks SET deleted_at = ? WHERE doc_token = ?",
-                (now, doc_token),
+                "UPDATE chunks SET deleted_at = ? WHERE account_id = ? AND doc_token = ?",
+                (now, account_id, doc_token),
             )
             connection.executemany(
                 """
                 INSERT INTO chunks (
-                    chunk_id, space_id, node_token, doc_token, doc_type, title,
-                    section_path, source_url, block_ids, content, content_hash,
+                    account_id, chunk_id, space_id, node_token, doc_token, doc_type,
+                    title, section_path, source_url, block_ids, content, content_hash,
                     updated_time, indexed_at, deleted_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
-                ON CONFLICT(chunk_id) DO UPDATE SET
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+                ON CONFLICT(account_id, chunk_id) DO UPDATE SET
                     space_id = excluded.space_id,
                     node_token = excluded.node_token,
                     doc_token = excluded.doc_token,
@@ -217,6 +279,7 @@ class StateRepository:
                 """,
                 [
                     (
+                        account_id,
                         chunk.chunk_id,
                         chunk.space_id,
                         chunk.node_token,
@@ -234,34 +297,71 @@ class StateRepository:
                 ],
             )
 
-    def mark_chunks_indexed(self, chunk_ids: list[str]) -> None:
+    def mark_chunks_indexed(self, account_id: str, chunk_ids: list[str]) -> None:
         if not chunk_ids:
             return
         now = utc_now_iso()
         placeholders = ",".join("?" for _ in chunk_ids)
         with connect(self.sqlite_path) as connection:
             connection.execute(
-                f"UPDATE chunks SET indexed_at = ? WHERE chunk_id IN ({placeholders})",
-                [now, *chunk_ids],
+                f"""
+                UPDATE chunks SET indexed_at = ?
+                WHERE account_id = ? AND chunk_id IN ({placeholders})
+                """,
+                [now, account_id, *chunk_ids],
             )
 
-    def list_active_chunks(self, limit: int = 1000) -> list[dict[str, Any]]:
+    def chunk_index_stats(self, account_id: str, doc_token: str) -> dict[str, int]:
+        with connect(self.sqlite_path) as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    COUNT(*) AS active_chunks,
+                    SUM(CASE WHEN indexed_at IS NULL THEN 1 ELSE 0 END) AS unindexed_chunks
+                FROM chunks
+                WHERE account_id = ? AND doc_token = ? AND deleted_at IS NULL
+                """,
+                (account_id, doc_token),
+            ).fetchone()
+        return {
+            "active_chunks": int(row["active_chunks"] or 0),
+            "unindexed_chunks": int(row["unindexed_chunks"] or 0),
+        }
+
+    def list_active_chunks(
+        self, limit: int = 1000, account_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        where = "WHERE deleted_at IS NULL"
+        params: list[Any] = []
+        if account_id:
+            where += " AND account_id = ?"
+            params.append(account_id)
         with connect(self.sqlite_path) as connection:
             rows = connection.execute(
-                """
+                f"""
                 SELECT * FROM chunks
-                WHERE deleted_at IS NULL
+                {where}
                 ORDER BY updated_time DESC
                 LIMIT ?
                 """,
-                (limit,),
+                [*params, limit],
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def get_chunk(self, chunk_id: str) -> dict[str, Any] | None:
+    def get_chunk(self, chunk_id: str, account_id: str | None = None) -> dict[str, Any] | None:
+        params: list[Any] = [chunk_id]
+        account_clause = ""
+        if account_id:
+            account_clause = "AND account_id = ?"
+            params.append(account_id)
         with connect(self.sqlite_path) as connection:
             row = connection.execute(
-                "SELECT * FROM chunks WHERE chunk_id = ? AND deleted_at IS NULL",
-                (chunk_id,),
+                f"""
+                SELECT * FROM chunks
+                WHERE chunk_id = ? AND deleted_at IS NULL {account_clause}
+                ORDER BY account_id = 'default' DESC
+                LIMIT 1
+                """,
+                params,
             ).fetchone()
         return dict(row) if row else None

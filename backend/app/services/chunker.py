@@ -22,6 +22,7 @@ class ParsedBlock:
 @dataclass(frozen=True)
 class Chunk:
     chunk_id: str
+    account_id: str
     space_id: str
     node_token: str
     doc_token: str
@@ -36,6 +37,7 @@ class Chunk:
 
 
 TEXT_KEYS = ("text", "content", "plain_text", "name", "title")
+MILVUS_CONTENT_MAX_BYTES = 8192
 
 
 def parse_blocks(blocks: list[FeishuBlock]) -> list[ParsedBlock]:
@@ -100,6 +102,33 @@ def normalize_text(text: str) -> str:
     return "\n".join(line for line in lines if line)
 
 
+def utf8_len(text: str) -> int:
+    return len(text.encode("utf-8"))
+
+
+def split_text_by_utf8_bytes(text: str, max_bytes: int) -> list[str]:
+    if max_bytes <= 0:
+        raise ValueError("max_bytes must be positive")
+    if utf8_len(text) <= max_bytes:
+        return [text]
+
+    segments: list[str] = []
+    current: list[str] = []
+    current_bytes = 0
+    for char in text:
+        char_bytes = utf8_len(char)
+        if current and current_bytes + char_bytes > max_bytes:
+            segments.append("".join(current))
+            current = []
+            current_bytes = 0
+        current.append(char)
+        current_bytes += char_bytes
+
+    if current:
+        segments.append("".join(current))
+    return segments
+
+
 def chunk_document(
     node: FeishuNode,
     blocks: list[FeishuBlock],
@@ -127,26 +156,37 @@ def chunk_document(
             "block_ids": current_block_ids,
             "content": content,
         }
-        content_hash = stable_json_hash(hash_input)
-        chunk_id = sha256_text(
-            f"{node.space_id}:{node.node_token}:{node.obj_token}:{content_hash}"
-        )[:32]
-        chunks.append(
-            Chunk(
-                chunk_id=chunk_id,
-                space_id=node.space_id,
-                node_token=node.node_token,
-                doc_token=node.obj_token or node.node_token,
-                doc_type=node.obj_type or "docx",
-                title=node.title,
-                section_path=section_path,
-                source_url=node.source_url,
-                block_ids=list(current_block_ids),
-                content=content,
-                content_hash=content_hash,
-                updated_time=node.updated_time,
+        segments = split_text_by_utf8_bytes(content, MILVUS_CONTENT_MAX_BYTES)
+        for segment_index, segment in enumerate(segments):
+            if len(segments) == 1:
+                segment_hash_input = hash_input
+            else:
+                segment_hash_input = {
+                    **hash_input,
+                    "segment_index": segment_index,
+                    "content": segment,
+                }
+            content_hash = stable_json_hash(segment_hash_input)
+            chunk_id = sha256_text(
+                f"{node.account_id}:{node.space_id}:{node.node_token}:{node.obj_token}:{content_hash}"
+            )[:32]
+            chunks.append(
+                Chunk(
+                    chunk_id=chunk_id,
+                    account_id=node.account_id,
+                    space_id=node.space_id,
+                    node_token=node.node_token,
+                    doc_token=node.obj_token or node.node_token,
+                    doc_type=node.obj_type or "docx",
+                    title=node.title,
+                    section_path=section_path,
+                    source_url=node.source_url,
+                    block_ids=list(current_block_ids),
+                    content=segment,
+                    content_hash=content_hash,
+                    updated_time=node.updated_time,
+                )
             )
-        )
         if overlap_chars > 0 and len(content) > overlap_chars:
             overlap = content[-overlap_chars:]
             current_texts = [overlap]
@@ -190,18 +230,25 @@ def blocks_snapshot_hash(blocks: list[FeishuBlock]) -> str:
     return stable_json_hash([block.raw for block in blocks])
 
 
+def milvus_varchar(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value)
+
+
 def chunk_to_milvus_metadata(chunk: Chunk) -> dict[str, Any]:
     return {
-        "chunk_id": chunk.chunk_id,
-        "space_id": chunk.space_id,
-        "node_token": chunk.node_token,
-        "doc_token": chunk.doc_token,
-        "doc_type": chunk.doc_type,
-        "title": chunk.title,
-        "section_path": chunk.section_path,
-        "source_url": chunk.source_url,
+        "chunk_id": milvus_varchar(chunk.chunk_id),
+        "account_id": milvus_varchar(chunk.account_id),
+        "space_id": milvus_varchar(chunk.space_id),
+        "node_token": milvus_varchar(chunk.node_token),
+        "doc_token": milvus_varchar(chunk.doc_token),
+        "doc_type": milvus_varchar(chunk.doc_type),
+        "title": milvus_varchar(chunk.title),
+        "section_path": milvus_varchar(chunk.section_path),
+        "source_url": milvus_varchar(chunk.source_url),
         "block_ids": json.dumps(chunk.block_ids, ensure_ascii=False),
-        "content": chunk.content,
-        "content_hash": chunk.content_hash,
+        "content": milvus_varchar(chunk.content),
+        "content_hash": milvus_varchar(chunk.content_hash),
         "updated_time": chunk.updated_time or 0,
     }

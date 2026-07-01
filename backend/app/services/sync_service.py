@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from backend.app.core.config import Settings, get_settings
+from collections.abc import AsyncIterator
+
+from backend.app.core.config import FeishuAccountConfig, Settings, get_settings
 from backend.app.services.chunker import chunk_document
 from backend.app.services.embedding import EmbeddingClient
 from backend.app.services.feishu import FeishuClient, FeishuNode
@@ -24,46 +26,91 @@ class SyncService:
 
         self.repository.mark_job_running(job_id)
         try:
-            if not self.settings.feishu_credentials_configured:
-                raise SyncServiceError("Feishu APP_ID/APP_SECRET is not configured")
+            accounts = self._job_accounts(job)
+            if not accounts:
+                raise SyncServiceError("No enabled Feishu account is configured")
 
-            client = FeishuClient(
-                base_url=self.settings.feishu_base_url,
-                app_id=self.settings.feishu_app_id or "",
-                app_secret=self.settings.feishu_app_secret or "",
-                timeout_seconds=self.settings.feishu_request_timeout_seconds,
-                page_size=self.settings.feishu_page_size,
-            )
-            nodes = await self._collect_nodes(client, job["scope_type"], job["scope_id"])
-            self.repository.set_job_total(job_id, len(nodes))
+            errors: list[str] = []
+            for account in accounts:
+                if not account.configured:
+                    errors.append(f"{account.account_id} is not configured")
+                    self.repository.increment_job_failed(job_id, errors[-1])
+                    continue
+                try:
+                    await self._run_account_scope(job_id, job, account)
+                except Exception as exc:
+                    if len(accounts) == 1:
+                        raise
+                    error = f"{account.account_id} sync failed: {exc}"
+                    errors.append(error)
+                    self.repository.increment_job_failed(job_id, error)
 
-            for node in nodes:
-                await self._sync_node(client, node)
-                self.repository.increment_job_processed(job_id)
-
-            self.repository.mark_job_succeeded(job_id)
+            if errors:
+                self.repository.mark_job_failed(job_id, "; ".join(errors), increment_failed=False)
+            else:
+                self.repository.mark_job_succeeded(job_id)
         except Exception as exc:
             self.repository.mark_job_failed(job_id, str(exc))
 
-    async def _collect_nodes(
+    async def _run_account_scope(
+        self,
+        job_id: str,
+        job: dict,
+        account: FeishuAccountConfig,
+    ) -> None:
+        client = FeishuClient(
+            base_url=self.settings.feishu_base_url,
+            account_id=account.account_id,
+            app_id=account.app_id,
+            app_secret=account.app_secret,
+            timeout_seconds=self.settings.feishu_request_timeout_seconds,
+            page_size=self.settings.feishu_page_size,
+        )
+        continue_on_node_error = job["scope_type"] in {"all", "account", "space", "node"}
+        async for node in self._iter_scope_nodes(client, job["scope_type"], job["scope_id"]):
+            self.repository.increment_job_total(job_id)
+            try:
+                await self._sync_node(client, node)
+            except Exception as exc:
+                if not continue_on_node_error:
+                    raise
+                self.repository.increment_job_failed(
+                    job_id,
+                    self._format_node_error(node, exc),
+                )
+                continue
+            self.repository.increment_job_processed(job_id)
+
+    def _job_accounts(self, job: dict) -> list[FeishuAccountConfig]:
+        account_id = job.get("account_id")
+        if not account_id and job.get("scope_type") == "account":
+            account_id = job.get("scope_id")
+        if account_id:
+            account = self.settings.get_feishu_account(account_id)
+            return [account] if account and account.enabled else []
+        return self.settings.enabled_feishu_accounts
+
+    async def _iter_scope_nodes(
         self,
         client: FeishuClient,
         scope_type: str,
         scope_id: str | None,
-    ) -> list[FeishuNode]:
-        if scope_type == "all":
+    ) -> AsyncIterator[FeishuNode]:
+        if scope_type in {"all", "account"}:
             spaces = await client.list_spaces()
             for space in spaces:
                 self.repository.upsert_space(space)
-            all_nodes: list[FeishuNode] = []
             for space in spaces:
-                all_nodes.extend(await self._collect_space_nodes(client, space.space_id))
-            return all_nodes
+                async for node in self._iter_space_nodes(client, space.space_id):
+                    yield node
+            return
 
         if scope_type == "space":
             if not scope_id:
                 raise SyncServiceError("space sync requires scope_id")
-            return await self._collect_space_nodes(client, scope_id)
+            async for node in self._iter_space_nodes(client, scope_id):
+                yield node
+            return
 
         if scope_type == "node":
             if not scope_id:
@@ -73,30 +120,35 @@ class SyncService:
                 raise SyncServiceError("node sync scope_id must be space_id:node_token")
             space_id, node_token = scope_id.split(":", 1)
             root = await client.get_node(space_id, node_token)
-            descendants = await self._collect_space_nodes(client, space_id, node_token)
-            return [root, *descendants]
+            self.repository.upsert_node(root)
+            yield root
+            async for node in self._iter_space_nodes(client, space_id, node_token):
+                yield node
+            return
 
         if scope_type == "document":
             if not scope_id or ":" not in scope_id:
                 raise SyncServiceError("document sync scope_id must be space_id:node_token")
             space_id, node_token = scope_id.split(":", 1)
-            return [await client.get_node(space_id, node_token)]
+            root = await client.get_node(space_id, node_token)
+            self.repository.upsert_node(root)
+            yield root
+            return
 
         raise SyncServiceError(f"unsupported sync scope_type: {scope_type}")
 
-    async def _collect_space_nodes(
+    async def _iter_space_nodes(
         self,
         client: FeishuClient,
         space_id: str,
         parent_node_token: str | None = None,
-    ) -> list[FeishuNode]:
+    ) -> AsyncIterator[FeishuNode]:
         nodes = await client.list_child_nodes(space_id, parent_node_token)
-        collected: list[FeishuNode] = []
         for node in nodes:
             self.repository.upsert_node(node)
-            collected.append(node)
-            collected.extend(await self._collect_space_nodes(client, space_id, node.node_token))
-        return collected
+            yield node
+            async for child in self._iter_space_nodes(client, space_id, node.node_token):
+                yield child
 
     async def _sync_node(self, client: FeishuClient, node: FeishuNode) -> None:
         self.repository.upsert_node(node)
@@ -107,10 +159,16 @@ class SyncService:
 
         blocks = await client.list_docx_blocks(node.obj_token)
         changed = self.repository.upsert_document(node, blocks)
-        if not changed:
+        doc_token = node.obj_token or node.node_token
+        index_stats = self.repository.chunk_index_stats(node.account_id, doc_token)
+        if (
+            not changed
+            and index_stats["active_chunks"] > 0
+            and index_stats["unindexed_chunks"] == 0
+        ):
             return
 
-        self.repository.replace_blocks(node.obj_token, blocks)
+        self.repository.replace_blocks(node.account_id, doc_token, blocks)
         chunks = chunk_document(
             node,
             blocks,
@@ -118,7 +176,7 @@ class SyncService:
             max_chars=self.settings.chunk_max_chars,
             overlap_chars=self.settings.chunk_overlap_chars,
         )
-        self.repository.replace_chunks(node.obj_token, chunks)
+        self.repository.replace_chunks(node.account_id, doc_token, chunks)
 
         if not chunks:
             return
@@ -133,9 +191,17 @@ class SyncService:
             uri=self.settings.milvus_uri,
             collection_name=self.settings.milvus_collection,
             dim=self.settings.embedding_dim,
+            legacy_collection_name=self.settings.milvus_legacy_collection,
         )
         vector_store.upsert_chunks(chunks, embeddings)
-        self.repository.mark_chunks_indexed([chunk.chunk_id for chunk in chunks])
+        self.repository.mark_chunks_indexed(node.account_id, [chunk.chunk_id for chunk in chunks])
+
+    @staticmethod
+    def _format_node_error(node: FeishuNode, exc: Exception) -> str:
+        return (
+            f"{node.title} ({node.account_id}:{node.space_id}:{node.node_token}) "
+            f"sync failed: {exc}"
+        )
 
 
 async def run_sync_job(job_id: str) -> None:

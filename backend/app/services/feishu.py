@@ -12,6 +12,7 @@ class FeishuError(RuntimeError):
 
 @dataclass(frozen=True)
 class FeishuSpace:
+    account_id: str
     space_id: str
     name: str
     description: str | None = None
@@ -19,6 +20,7 @@ class FeishuSpace:
 
 @dataclass(frozen=True)
 class FeishuNode:
+    account_id: str
     space_id: str
     node_token: str
     parent_node_token: str | None
@@ -41,12 +43,14 @@ class FeishuClient:
     def __init__(
         self,
         base_url: str,
+        account_id: str,
         app_id: str,
         app_secret: str,
         timeout_seconds: float = 30,
         page_size: int = 50,
     ) -> None:
         self.base_url = base_url.rstrip("/")
+        self.account_id = account_id
         self.app_id = app_id
         self.app_secret = app_secret
         self.timeout_seconds = timeout_seconds
@@ -118,6 +122,7 @@ class FeishuClient:
         )
         return [
             FeishuSpace(
+                account_id=self.account_id,
                 space_id=str(item.get("space_id") or item.get("space_id_str") or ""),
                 name=str(item.get("name") or item.get("space_name") or "Untitled space"),
                 description=item.get("description"),
@@ -167,18 +172,28 @@ class FeishuClient:
         updated_time = (
             item.get("obj_edit_time") or item.get("updated_time") or item.get("edit_time")
         )
+        source_url = (
+            item.get("url") or item.get("source_url") or self._fallback_wiki_url(node_token)
+        )
         return FeishuNode(
+            account_id=self.account_id,
             space_id=space_id,
             node_token=node_token,
             parent_node_token=item.get("parent_node_token") or fallback_parent_node_token,
             obj_token=obj_token,
             obj_type=item.get("obj_type") or item.get("node_type"),
             title=str(item.get("title") or item.get("name") or "Untitled document"),
-            source_url=item.get("url") or item.get("source_url"),
+            source_url=source_url,
             updated_time=int(updated_time)
             if updated_time is not None and str(updated_time).isdigit()
             else None,
         )
+
+    @staticmethod
+    def _fallback_wiki_url(node_token: str) -> str | None:
+        if not node_token:
+            return None
+        return f"https://feishu.cn/wiki/{node_token}"
 
     def _parse_block(self, item: dict[str, Any]) -> FeishuBlock:
         block_type = str(item.get("block_type") or item.get("type") or "unknown")

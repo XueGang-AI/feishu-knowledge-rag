@@ -2,7 +2,7 @@
 
 ## 目标
 
-从飞书知识库同步内容，包括知识库空间、节点、文档、标题层级和正文 block；将飞书文档解析为适合检索的本地文本 chunk；用 bge-m3 生成 embedding，写入 Milvus；查询时先召回再用 bge-reranker-v2-m3 精排；最后用本地 Qwen3.6-27B-GGUF Q4_K_M 生成答案，并返回可追溯到飞书文档或 block 的来源引用。
+从飞书知识库同步内容，包括知识库空间、节点、文档、标题层级和正文 block；将飞书文档解析为适合检索的本地文本 chunk；用 bge-m3 生成 embedding，写入 Milvus；查询时先召回再用 bge-reranker-v2-m3 精排；最后默认用本地 Gemma 4 12B IT QAT Q4_0 GGUF 生成答案，并返回可追溯到飞书文档或 block 的来源引用。Qwen3.6-27B-GGUF Q4_K_M 保留为可选回退/对比模型。
 
 ## 总体架构
 
@@ -30,7 +30,7 @@
              |       bge-reranker   top chunks
              v             |
     +-----------------+    v
-    | SQLite State DB |  llama.cpp / Qwen
+    | SQLite State DB |  llama.cpp / Gemma
     +-----------------+    |
                            v
                      answer + sources
@@ -78,11 +78,11 @@
 
 | 飞书对象 | 本地表 | 关键字段 |
 |----------|--------|----------|
-| 知识空间 | `spaces` | `space_id`, `name`, `description` |
-| 知识库节点 | `nodes` | `space_id`, `node_token`, `parent_node_token`, `obj_token`, `obj_type`, `title` |
-| 云文档 | `documents` | `doc_token`, `doc_type`, `title`, `source_url`, `updated_time` |
-| 文档 block | `blocks` | `block_id`, `parent_block_id`, `block_type`, `text`, `heading_level`, `hash` |
-| 检索 chunk | `chunks` | `chunk_id`, `doc_token`, `section_path`, `block_ids`, `content_hash`, `indexed_at` |
+| 知识空间 | `spaces` | `account_id`, `space_id`, `name`, `description` |
+| 知识库节点 | `nodes` | `account_id`, `space_id`, `node_token`, `parent_node_token`, `obj_token`, `obj_type`, `title` |
+| 云文档 | `documents` | `account_id`, `doc_token`, `doc_type`, `title`, `source_url`, `updated_time` |
+| 文档 block | `blocks` | `account_id`, `block_id`, `doc_token`, `parent_block_id`, `block_type`, `hash` |
+| 检索 chunk | `chunks` | `account_id`, `chunk_id`, `doc_token`, `section_path`, `block_ids`, `content_hash`, `indexed_at` |
 
 ### 增量同步
 
@@ -169,8 +169,10 @@ chunk 文本模板：
 collection 名称：
 
 ```text
-feishu_chunks_v1
+feishu_chunks_v2
 ```
+
+旧 collection `feishu_chunks_v1` 仅作为默认账号的 fallback collection。
 
 向量维度：
 
@@ -189,6 +191,7 @@ COSINE
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `chunk_id` | VarChar primary key | 稳定 chunk ID |
+| `account_id` | VarChar | 飞书账号/租户标识 |
 | `space_id` | VarChar | 知识空间 ID |
 | `node_token` | VarChar | 知识库节点 token |
 | `doc_token` | VarChar | 文档 token |
@@ -266,9 +269,11 @@ pending -> running -> cancelled
 1. 用户输入 query。
 2. 调用 bge-m3 生成 query embedding。
 3. Milvus 召回 top 50。
-4. 过滤 deleted、权限不匹配、空间不匹配的 chunk。
+4. 按 `account_id`、`space_id`、`doc_token` 过滤 chunk。
 5. bge-reranker-v2-m3 对 query 和 chunk content 打分。
 6. 取 top 5-8 作为 LLM context。
+
+如果 Reranker 推理接口返回错误，后端降级使用 Milvus 原始召回 topN，继续返回结果并将 `rerank_score` 置为 `null`；`/health` 使用真实 `/rerank` 探针展示 reranker 推理可用性。
 
 ### Prompt Context
 
@@ -293,6 +298,22 @@ content:
 
 ### Response Schema
 
+`POST /api/chat` 请求支持：
+
+```json
+{
+  "query": "问题",
+  "mode": "auto",
+  "account_id": "default",
+  "space_id": null,
+  "doc_token": null,
+  "top_k": 50,
+  "top_n": 8
+}
+```
+
+`mode=auto` 会把普通问题直接交给 Gemma；涉及飞书知识库、文档范围或项目资料时走 RAG。`mode=direct` 强制不检索，`mode=rag` 强制检索。
+
 `POST /api/chat` 返回：
 
 ```json
@@ -302,6 +323,10 @@ content:
     {
       "source_id": "S1",
       "chunk_id": "chunk_xxx",
+      "account_id": "default",
+      "space_id": "spc_xxx",
+      "node_token": "nod_xxx",
+      "doc_token": "doc_xxx",
       "title": "知识库接入说明",
       "section_path": "接入流程 > 权限配置",
       "source_url": "https://...",
@@ -311,7 +336,9 @@ content:
       "updated_time": 1782499200,
       "content_preview": "..."
     }
-  ]
+  ],
+  "mode": "rag",
+  "retrieval_used": true
 }
 ```
 
@@ -323,9 +350,11 @@ content:
 | `POST` | `/api/sync/jobs` | 创建同步任务 |
 | `GET` | `/api/sync/jobs` | 同步任务列表 |
 | `GET` | `/api/sync/jobs/{job_id}` | 同步任务详情 |
+| `POST` | `/api/sync/jobs/{job_id}/run` | 启动已创建任务 |
 | `POST` | `/api/sync/jobs/{job_id}/cancel` | 取消任务 |
 | `GET` | `/api/sync/status` | 同步状态总览 |
 | `POST` | `/api/reindex` | 重建索引 |
+| `POST` | `/api/sync/weekly-scan/run` | 手动触发 weekly scan |
 | `POST` | `/api/search` | 检索 chunks |
 | `POST` | `/api/chat` | 问答 |
 | `GET` | `/api/sources/{chunk_id}` | 查看来源详情 |
@@ -336,11 +365,14 @@ content:
 
 | 页面 | 功能 |
 |------|------|
-| Chat | 提问、流式答案、来源引用 |
-| Sources | 展开查看引用 chunk、标题路径、block_id、飞书链接 |
-| Sync | 创建同步任务、选择空间/节点、查看进度 |
-| Documents | 文档索引状态、更新时间、chunk 数 |
-| Settings | 通用服务地址、Milvus 连接、飞书配置检查 |
+| 首页总览 | 真实健康状态、索引统计、快捷提问、提醒入口 |
+| 智能问答 | 自动/强制知识库问答、来源引用、直接回答状态 |
+| 知识库管理 | 多账号集合状态、最近来源、文档入口 |
+| 导入文档 | 创建同步任务、选择 all/account/space/node/document 范围、weekly scan |
+| 长期记忆 | 当前浏览器本地记忆展示 |
+| 检索测试 | 真实 `/api/search` 检索和来源打开 |
+| 本地设置 | API base、服务健康、问答偏好、账号范围 |
+| 健康度/系统提醒 | 根据服务、chunks、同步任务和账号错误推导 |
 
 交互原则：
 
@@ -348,6 +380,7 @@ content:
 - 来源引用可点击，打开飞书链接。
 - 同步任务显示 running/succeeded/failed/cancelled。
 - 失败任务展示失败节点、文档和错误原因。
+- 文档详情里的“用此文档提问/生成摘要”用 `doc_token` 做检索过滤；“重新索引”用 `space_id:node_token` 创建 document scope 任务。
 
 ## 部署拓扑
 
@@ -356,7 +389,8 @@ content:
 127.0.0.1:3301  backend
 127.0.0.1:8010  通用 Embedding
 127.0.0.1:8020  通用 Reranker
-127.0.0.1:8030  通用 LLM OpenAI API
+127.0.0.1:8040  通用 LLM OpenAI API（Gemma 默认）
+127.0.0.1:8030  通用 Qwen OpenAI API（可选/回退/对比）
 127.0.0.1:19530 通用 Milvus
 ```
 
@@ -374,15 +408,20 @@ EMBEDDING_DIM=1024
 
 MILVUS_URI=http://127.0.0.1:19530
 MILVUS_DB=default
-MILVUS_COLLECTION=feishu_chunks_v1
+MILVUS_COLLECTION=feishu_chunks_v2
+MILVUS_LEGACY_COLLECTION=feishu_chunks_v1
 
 RERANKER_BASE_URL=http://127.0.0.1:8020
 RERANKER_MODEL=BAAI/bge-reranker-v2-m3
 
-LLM_BASE_URL=http://127.0.0.1:8030/v1
-LLM_MODEL=Qwen3.6-27B-GGUF:Q4_K_M
+LLM_BASE_URL=http://127.0.0.1:8040/v1
+LLM_MODEL=gemma-4-12b-it-qat-q4_0
 LLM_TEMPERATURE=0.2
 LLM_MAX_TOKENS=2048
+
+# Optional Qwen 27B fallback/comparison:
+# LLM_BASE_URL=http://127.0.0.1:8030/v1
+# LLM_MODEL=Qwen3.6-27B-GGUF:Q4_K_M
 ```
 
 ## 风险与处理
@@ -394,6 +433,6 @@ LLM_MAX_TOKENS=2048
 | 文档 block 类型复杂 | 先覆盖标题、正文、列表、表格、代码块，图片/附件后续扩展 |
 | Milvus 容器路径不一致 | 将 compose 固化到本项目或修正现有脚本 |
 | 通用模型服务不可用 | 健康检查标记为 unavailable，前后端不自动拉起外部模型服务 |
-| Qwen 上下文过长 | rerank 后 top 5-8，按 token budget 截断 |
+| 生成模型上下文过长 | rerank 后 top 5-8，按 token budget 截断 |
 | 引用不准确 | 所有 prompt context 强制带 `source_id`、`chunk_id`、`block_ids` |
 | 重复 chunk | `content_hash` + `chunk_id` 稳定生成，upsert 幂等 |

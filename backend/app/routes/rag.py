@@ -14,6 +14,7 @@ async def search(request: SearchRequest) -> SearchResponse:
             query=request.query,
             top_k=request.top_k,
             top_n=request.top_n,
+            account_id=request.account_id,
             space_id=request.space_id,
             doc_token=request.doc_token,
         )
@@ -26,8 +27,10 @@ async def chat(request: ChatRequest) -> ChatResponse:
     try:
         return await RAGService(get_settings()).chat(
             query=request.query,
+            mode=request.mode,
             top_k=request.top_k,
             top_n=request.top_n,
+            account_id=request.account_id,
             space_id=request.space_id,
             doc_token=request.doc_token,
         )

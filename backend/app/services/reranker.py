@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any
 
@@ -39,6 +40,9 @@ class RerankerClient:
         }
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.post(f"{self.base_url}/rerank", json=payload)
+            if response.status_code >= 500:
+                await asyncio.sleep(0.5)
+                response = await client.post(f"{self.base_url}/rerank", json=payload)
         if response.status_code >= 400:
             raise RerankerClientError(f"reranker service returned HTTP {response.status_code}")
         data = response.json()

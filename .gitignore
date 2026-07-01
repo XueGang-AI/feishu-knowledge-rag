@@ -8,10 +8,18 @@ __pycache__/
 .mypy_cache/
 
 # Local runtime state
+data/*.sqlite3
+data/*.sqlite3-*
 data/state/
 data/logs/
 data/cache/
 data/run/
+.screenshots/
+
+# Local agent coordination artifacts
+agent_memory/
+agents/
+design-qa.md
 
 # Model artifacts
 models/

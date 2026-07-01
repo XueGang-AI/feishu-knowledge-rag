@@ -13,15 +13,15 @@
 - 连接通用 Milvus，验证 `127.0.0.1:19530`。
 - 连接通用 Embedding 服务 `8010`，验证 `/v1/embeddings`。
 - 下载 bge-reranker-v2-m3。
-- 下载 `Qwen3.6-27B-Q4_K_M.gguf`。
-- 连接通用 LLM 服务 `8030/v1`，验证 `/chat/completions`。
+- 下载默认生成模型 `gemma-4-12b-it-qat-q4_0.gguf`；Qwen 27B 权重保留为可选回退/对比。
+- 连接通用 LLM 服务 `8040/v1`，验证 `/chat/completions`。
 
 验收标准：
 
 - `README.md` 中列出的所有本地服务端口可访问。
 - bge-m3 返回 1024 维 embedding。
 - Milvus 可以创建 collection 并插入测试向量。
-- Qwen 可以通过 OpenAI-compatible API 返回测试回答。
+- Gemma 可以通过 OpenAI-compatible API 返回测试回答；Qwen 可按需作为可选回退/对比验证。
 
 ## Phase 1：后端基础工程
 
@@ -108,7 +108,7 @@
 任务：
 
 - 实现 bge-m3 embedding client。
-- 创建 Milvus collection `feishu_chunks_v1`。
+- 创建 Milvus collection `feishu_chunks_v2`，并保留 `feishu_chunks_v1` 作为默认账号旧数据 fallback。
 - 建立 1024 维向量 schema 和 metadata 字段。
 - 实现 chunk upsert。
 - 实现过期 chunk 删除或软删除。
@@ -129,7 +129,7 @@
 - 部署 reranker 服务或后端内嵌 reranker。
 - 实现 rerank client。
 - `POST /api/search` 返回 raw score 和 rerank score。
-- 支持 top_k、top_n、space_id、doc_type 过滤。
+- 支持 top_k、top_n、account_id、space_id、doc_token 过滤。
 - 增加简单评测集：问题、期望文档、期望标题路径。
 
 验收标准：
@@ -138,7 +138,7 @@
 - 返回结果按 rerank score 排序。
 - 相同 query 多次请求结果稳定。
 
-## Phase 7：Qwen 生成与来源引用
+## Phase 7：Gemma 生成与来源引用
 
 目标：实现完整问答，答案必须带来源引用。
 
@@ -149,6 +149,7 @@
 - 将 top 5-8 chunk 编号为 `[S1]`、`[S2]`。
 - 实现 citation builder。
 - 实现 `POST /api/chat`。
+- 支持 `mode=auto|direct|rag`：普通问题 direct，知识库/文档范围问题 RAG。
 - 支持流式输出时最后返回完整 sources。
 
 验收标准：
@@ -169,12 +170,13 @@
 - 实现任务取消。
 - 实现 `GET /api/sync/status`。
 - 实现 `POST /api/reindex`。
+- 实现 weekly scan 调度和手动触发入口。
 - 增加 index event 日志。
 
 验收标准：
 
 - 可以查看最近同步时间、文档数、chunk 数、失败数。
-- 可以对单个文档重新索引。
+- 可以对单个文档重新索引；document scope 的 `scope_id` 为 `space_id:node_token`。
 - 删除的文档不会再被检索到。
 
 ## Phase 9：前端界面
@@ -189,6 +191,7 @@
 - 实现 Sync 页面：创建任务、查看进度、失败详情。
 - 实现 Documents 页面：文档索引状态。
 - 实现 Settings 页面：通用服务健康检查。
+- 实现真实搜索、文档详情、健康度和系统提醒视图。
 
 验收标准：
 
@@ -230,6 +233,5 @@ MVP 暂不包含：
 
 - 飞书表格、多维表格、图片 OCR、附件解析。
 - 多用户权限继承。
-- 自动定时同步。
 - 分布式任务队列。
-- 多租户隔离。
+- 完整用户权限继承。

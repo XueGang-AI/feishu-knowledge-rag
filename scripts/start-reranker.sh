@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-HOST="${RERANKER_HOST:-127.0.0.1}"
-PORT="${RERANKER_PORT:-8020}"
+SERVICE_DIR="${RERANKER_SERVICE_DIR:-/Users/xuegang/Desktop/My Project/Model/bge-reranker-service}"
 
-cd "$(dirname "$0")/../deploy/reranker"
-uv sync
-uv run uvicorn app:app --host "$HOST" --port "$PORT"
+if [ ! -x "$SERVICE_DIR/scripts/start.sh" ]; then
+  echo "Reranker service wrapper not found: $SERVICE_DIR/scripts/start.sh" >&2
+  echo "Set RERANKER_SERVICE_DIR to override the default service directory." >&2
+  exit 1
+fi
+
+exec "$SERVICE_DIR/scripts/start.sh"

@@ -74,6 +74,7 @@ async def health() -> dict[str, Any]:
         "name": "feishu",
         "ok": settings.feishu_credentials_configured,
         "configured": settings.feishu_credentials_configured,
+        "accounts": settings.public_feishu_accounts,
     }
 
     embedding, reranker, llm, milvus = await asyncio.gather(
@@ -82,10 +83,16 @@ async def health() -> dict[str, Any]:
             f"{settings.embedding_base_url}/health",
             _health_timeout(settings.embedding_timeout_seconds),
         ),
-        _check_http_get(
+        _check_http_post(
             "reranker",
-            f"{settings.reranker_base_url}/health",
+            f"{settings.reranker_base_url}/rerank",
             _health_timeout(settings.reranker_timeout_seconds),
+            {
+                "model": settings.reranker_model,
+                "query": "health check",
+                "documents": [{"id": "health", "text": "health check"}],
+                "top_n": 1,
+            },
         ),
         _check_http_get(
             "llm",

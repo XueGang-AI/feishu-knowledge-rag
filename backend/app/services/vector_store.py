@@ -11,10 +11,19 @@ class VectorStoreError(RuntimeError):
 
 
 class MilvusVectorStore:
-    def __init__(self, uri: str, collection_name: str, dim: int = 1024) -> None:
+    def __init__(
+        self,
+        uri: str,
+        collection_name: str,
+        dim: int = 1024,
+        legacy_collection_name: str | None = None,
+    ) -> None:
         self.uri = uri
         self.collection_name = collection_name
         self.dim = dim
+        self.legacy_collection_name = (
+            legacy_collection_name if legacy_collection_name != collection_name else None
+        )
 
     def _client(self):
         from pymilvus import MilvusClient
@@ -30,6 +39,7 @@ class MilvusVectorStore:
 
         schema = client.create_schema(auto_id=False, enable_dynamic_field=False)
         schema.add_field("chunk_id", DataType.VARCHAR, is_primary=True, max_length=128)
+        schema.add_field("account_id", DataType.VARCHAR, max_length=128)
         schema.add_field("space_id", DataType.VARCHAR, max_length=128)
         schema.add_field("node_token", DataType.VARCHAR, max_length=256)
         schema.add_field("doc_token", DataType.VARCHAR, max_length=256)
@@ -67,34 +77,76 @@ class MilvusVectorStore:
             metadata = chunk_to_milvus_metadata(chunk)
             metadata["embedding"] = embedding
             rows.append(metadata)
-        self._client().upsert(collection_name=self.collection_name, data=rows)
+        client = self._client()
+        client.upsert(collection_name=self.collection_name, data=rows)
+        client.flush(collection_name=self.collection_name)
 
     def search(
         self,
         embedding: list[float],
         top_k: int,
         filters: str | None = None,
+        legacy_filters: str | None = None,
+        legacy_account_id: str | None = None,
     ) -> list[dict[str, Any]]:
         self.ensure_collection()
-        results = self._client().search(
-            collection_name=self.collection_name,
+        client = self._client()
+        hits = self._search_collection(
+            client,
+            self.collection_name,
+            embedding,
+            top_k,
+            filters,
+            include_account_id=True,
+        )
+        allow_legacy_fallback = filters is None or legacy_account_id is not None
+        if hits or not self.legacy_collection_name or not allow_legacy_fallback:
+            return hits
+        if not client.has_collection(self.legacy_collection_name):
+            return hits
+        legacy_hits = self._search_collection(
+            client,
+            self.legacy_collection_name,
+            embedding,
+            top_k,
+            legacy_filters,
+            include_account_id=False,
+        )
+        for hit in legacy_hits:
+            hit.setdefault("account_id", legacy_account_id or "default")
+        return legacy_hits
+
+    def _search_collection(
+        self,
+        client: Any,
+        collection_name: str,
+        embedding: list[float],
+        top_k: int,
+        filters: str | None,
+        include_account_id: bool,
+    ) -> list[dict[str, Any]]:
+        output_fields = [
+            "chunk_id",
+            "space_id",
+            "node_token",
+            "doc_token",
+            "doc_type",
+            "title",
+            "section_path",
+            "source_url",
+            "block_ids",
+            "content",
+            "content_hash",
+            "updated_time",
+        ]
+        if include_account_id:
+            output_fields.insert(1, "account_id")
+        results = client.search(
+            collection_name=collection_name,
             data=[embedding],
             limit=top_k,
             filter=filters,
-            output_fields=[
-                "chunk_id",
-                "space_id",
-                "node_token",
-                "doc_token",
-                "doc_type",
-                "title",
-                "section_path",
-                "source_url",
-                "block_ids",
-                "content",
-                "content_hash",
-                "updated_time",
-            ],
+            output_fields=output_fields,
             search_params={"metric_type": "COSINE", "params": {"ef": 64}},
         )
         hits = []

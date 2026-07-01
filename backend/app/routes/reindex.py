@@ -16,6 +16,7 @@ def reindex(request: ReindexRequest, background_tasks: BackgroundTasks) -> SyncJ
         CreateSyncJobRequest(
             scope_type=request.scope_type,
             scope_id=request.scope_id,
+            account_id=request.account_id,
             auto_start=True,
         ),
         background_tasks,

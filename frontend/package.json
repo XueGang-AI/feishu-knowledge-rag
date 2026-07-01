@@ -6,7 +6,7 @@
     "dev": "next dev -H 127.0.0.1 -p 3300",
     "build": "next build",
     "start": "next start -H 127.0.0.1 -p 3300",
-    "lint": "next lint"
+    "lint": "eslint ."
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
@@ -15,6 +15,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.5",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
